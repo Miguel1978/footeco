@@ -1,9 +1,14 @@
 version: '3.8'
 
 services:
-  foot-eco-sheet:
+  footeco-app:
     build: .
-    container_name: foot-eco-sheet
+    container_name: footeco-matchsheet
     restart: unless-stopped
     ports:
-      - "8085:80" # Modifiez 8085 si vous préférez un autre port d'accès sur votre NAS
+      - "8085:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
