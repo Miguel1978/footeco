@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  foot-eco-sheet:
+    build: .
+    container_name: foot-eco-sheet
+    restart: unless-stopped
+    ports:
+      - "8085:80" # Modifiez 8085 si vous préférez un autre port d'accès sur votre NAS

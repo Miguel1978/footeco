@@ -1,0 +1,7 @@
+{
+  "name": "Feuille de Match Footeco FE12",
+  "description": "Gestion officielle de feuille de match et de séances d'entraînement FootEco FE12 avec gestion des saisons, calendrier des rencontres, thèmes TE/TA/PE, schémas tactiques d'ateliers, effectif, rotations et exports PDF/Excel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
