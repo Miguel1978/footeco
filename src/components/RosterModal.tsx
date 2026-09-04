@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { MatchData, Player, Position } from '../types';
 import { 
   Users, 
@@ -9,7 +9,9 @@ import {
   FileText, 
   Sparkles, 
   Palette,
-  Shuffle
+  Shuffle,
+  Search,
+  Filter
 } from 'lucide-react';
 import { PlayerAvatar } from './PlayerAvatar';
 import { PlayerAvatarPickerModal } from './PlayerAvatarPickerModal';
@@ -35,6 +37,12 @@ export const RosterModal: React.FC<RosterModalProps> = ({
   const [newPlayerNum, setNewPlayerNum] = useState<string>('');
   const [showBatchAdd, setShowBatchAdd] = useState(false);
   const [batchText, setBatchText] = useState('');
+
+  // Search & Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [positionFilter, setPositionFilter] = useState<string>('all');
+  const [presenceFilter, setPresenceFilter] = useState<'all' | 'present' | 'absent'>('all');
+  const [showAddForm, setShowAddForm] = useState(false);
 
   // Selected player for avatar customization modal
   const [editingAvatarPlayer, setEditingAvatarPlayer] = useState<Player | null>(null);
@@ -136,6 +144,51 @@ export const RosterModal: React.FC<RosterModalProps> = ({
 
   const presentCount = matchData.roster.filter(p => p.isPresent).length;
 
+  // Filtered Roster according to search query, position, and presence
+  const filteredRoster = useMemo(() => {
+    return matchData.roster.filter((player) => {
+      // 1. Text search on name, jersey number, or position
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesName = player.name.toLowerCase().includes(q);
+        const matchesNumber = player.number !== undefined && player.number.toString().includes(q);
+        const matchesPosition = player.defaultPosition?.toLowerCase().includes(q);
+        if (!matchesName && !matchesNumber && !matchesPosition) {
+          return false;
+        }
+      }
+
+      // 2. Position filter
+      if (positionFilter !== 'all' && player.defaultPosition !== positionFilter) {
+        return false;
+      }
+
+      // 3. Presence filter
+      if (presenceFilter === 'present' && !player.isPresent) {
+        return false;
+      }
+      if (presenceFilter === 'absent' && player.isPresent) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [matchData.roster, searchQuery, positionFilter, presenceFilter]);
+
+  const handleSetAllFilteredPresence = (isPresent: boolean) => {
+    const ids = new Set(filteredRoster.map(p => p.id));
+    onUpdateMatch(prev => ({
+      ...prev,
+      roster: prev.roster.map(p => ids.has(p.id) ? { ...p, isPresent } : p),
+    }));
+  };
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setPositionFilter('all');
+    setPresenceFilter('all');
+  };
+
   return (
     <>
       <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -159,7 +212,7 @@ export const RosterModal: React.FC<RosterModalProps> = ({
               <button
                 type="button"
                 onClick={handleGenerateAllAvatars}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-200 transition-colors shadow-2xs"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-200 transition-colors shadow-2xs cursor-pointer"
                 title="Attribuer automatiquement des icônes et couleurs distinctes à tous les joueurs"
               >
                 <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
@@ -168,97 +221,227 @@ export const RosterModal: React.FC<RosterModalProps> = ({
 
               <button
                 onClick={onClose}
-                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
           </div>
 
-          {/* Content Body */}
-          <div className="p-6 overflow-y-auto space-y-6 flex-1">
-            
-            {/* Add Player Form */}
-            <form onSubmit={handleAddPlayer} className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                  Ajouter un nouveau joueur
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowBatchAdd(!showBatchAdd)}
-                  className="text-xs text-emerald-700 hover:text-emerald-800 font-semibold flex items-center gap-1"
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  {showBatchAdd ? 'Mode simple' : 'Import en masse (liste)'}
-                </button>
+          {/* Top Search & Filter Bar (Barre de recherche rapide pour composer les titulaires) */}
+          <div className="px-6 py-3.5 bg-slate-50 border-b border-slate-200 space-y-3 shrink-0">
+            <div className="flex items-center gap-2.5">
+              {/* Search input */}
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  id="roster-search-input"
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Rechercher un joueur (nom, N° maillot, poste) pour filtrer les titulaires..."
+                  className="w-full pl-10 pr-9 py-2 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all shadow-2xs"
+                  autoFocus
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-md transition-colors cursor-pointer"
+                    title="Effacer le filtre de recherche"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
-              {showBatchAdd ? (
-                <div className="space-y-3">
-                  <textarea
-                    value={batchText}
-                    onChange={(e) => setBatchText(e.target.value)}
-                    placeholder="Collez ici les noms des joueurs (un par ligne ou séparés par des virgules)&#10;Exemple:&#10;Lucas&#10;Maxime&#10;Noah"
-                    className="w-full h-24 p-3 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowBatchAdd(false)}
-                      className="px-3 py-1.5 text-xs text-slate-600 bg-slate-200 rounded-lg"
-                    >
-                      Annuler
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleBatchAdd}
-                      className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm"
-                    >
-                      Ajouter la liste
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-wrap sm:flex-nowrap gap-2">
-                  <input
-                    type="text"
-                    placeholder="Nom du joueur (ex: Ilian)"
-                    value={newPlayerName}
-                    onChange={(e) => setNewPlayerName(e.target.value)}
-                    className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                  <input
-                    type="number"
-                    placeholder="N°"
-                    value={newPlayerNum}
-                    onChange={(e) => setNewPlayerNum(e.target.value)}
-                    className="w-16 px-2 py-2 text-center bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                  <select
-                    value={newPlayerPos}
-                    onChange={(e) => setNewPlayerPos(e.target.value as Position)}
-                    className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  >
-                    {POSITIONS.map(pos => (
-                      <option key={pos} value={pos}>{pos}</option>
-                    ))}
-                  </select>
+              {/* Toggle Add Player Button */}
+              <button
+                type="button"
+                onClick={() => setShowAddForm(!showAddForm)}
+                className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl border transition-all shrink-0 cursor-pointer shadow-2xs ${
+                  showAddForm
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+                }`}
+                title="Ajouter un joueur supplémentaire"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{showAddForm ? 'Fermer ajout' : 'Nouveau joueur'}</span>
+              </button>
+            </div>
+
+            {/* Quick Filters Row: Presence, Positions & Bulk Selection */}
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Presence Segmented Filter */}
+                <div className="flex items-center bg-white p-0.5 rounded-lg border border-slate-300 shadow-2xs">
                   <button
-                    type="submit"
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center gap-1 shrink-0"
+                    type="button"
+                    onClick={() => setPresenceFilter('all')}
+                    className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                      presenceFilter === 'all'
+                        ? 'bg-slate-900 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
                   >
-                    <Plus className="w-4 h-4" /> Ajouter
+                    Tous ({matchData.roster.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPresenceFilter('present')}
+                    className={`px-2.5 py-1 rounded-md font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+                      presenceFilter === 'present'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'text-emerald-700 hover:text-emerald-900'
+                    }`}
+                  >
+                    <Check className="w-3 h-3 stroke-[3]" />
+                    <span>Présents ({presentCount})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPresenceFilter('absent')}
+                    className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                      presenceFilter === 'absent'
+                        ? 'bg-slate-700 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Absents ({matchData.roster.length - presentCount})
                   </button>
                 </div>
-              )}
-            </form>
+
+                {/* Position Filter Pills */}
+                <div className="flex items-center gap-1 flex-wrap">
+                  {['Tous', ...POSITIONS].map(pos => {
+                    const isSelected = positionFilter === pos || (pos === 'Tous' && positionFilter === 'all');
+                    return (
+                      <button
+                        key={pos}
+                        type="button"
+                        onClick={() => setPositionFilter(pos === 'Tous' ? 'all' : pos)}
+                        className={`px-2 py-1 rounded-md text-[11px] font-semibold border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-emerald-800 text-white border-emerald-800 shadow-2xs'
+                            : 'bg-white text-slate-600 hover:bg-slate-100 border-slate-200'
+                        }`}
+                      >
+                        {pos}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Quick actions for filtered players */}
+              <div className="flex items-center gap-1.5 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => handleSetAllFilteredPresence(true)}
+                  className="px-2.5 py-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer"
+                  title="Marquer tous les joueurs filtrés comme présents"
+                >
+                  Tout cocher présent
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetAllFilteredPresence(false)}
+                  className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                  title="Marquer tous les joueurs filtrés comme absents"
+                >
+                  Tout décocher
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Content Body */}
+          <div className="p-6 overflow-y-auto space-y-5 flex-1">
+            
+            {/* Add Player Form (Visible if toggled or if roster is empty) */}
+            {(showAddForm || matchData.roster.length === 0) && (
+              <form onSubmit={handleAddPlayer} className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                    Ajouter un nouveau joueur
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowBatchAdd(!showBatchAdd)}
+                    className="text-xs text-emerald-700 hover:text-emerald-800 font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    {showBatchAdd ? 'Mode simple' : 'Import en masse (liste)'}
+                  </button>
+                </div>
+
+                {showBatchAdd ? (
+                  <div className="space-y-3">
+                    <textarea
+                      value={batchText}
+                      onChange={(e) => setBatchText(e.target.value)}
+                      placeholder="Collez ici les noms des joueurs (un par ligne ou séparés par des virgules)&#10;Exemple:&#10;Lucas&#10;Maxime&#10;Noah"
+                      className="w-full h-24 p-3 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowBatchAdd(false)}
+                        className="px-3 py-1.5 text-xs text-slate-600 bg-slate-200 hover:bg-slate-300 rounded-lg cursor-pointer"
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleBatchAdd}
+                        className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm cursor-pointer"
+                      >
+                        Ajouter la liste
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap sm:flex-nowrap gap-2">
+                    <input
+                      type="text"
+                      placeholder="Nom du joueur (ex: Ilian)"
+                      value={newPlayerName}
+                      onChange={(e) => setNewPlayerName(e.target.value)}
+                      className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                    <input
+                      type="number"
+                      placeholder="N°"
+                      value={newPlayerNum}
+                      onChange={(e) => setNewPlayerNum(e.target.value)}
+                      className="w-16 px-2 py-2 text-center bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                    <select
+                      value={newPlayerPos}
+                      onChange={(e) => setNewPlayerPos(e.target.value as Position)}
+                      className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    >
+                      {POSITIONS.map(pos => (
+                        <option key={pos} value={pos}>{pos}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" /> Ajouter
+                    </button>
+                  </div>
+                )}
+              </form>
+            )}
 
             {/* Player list with Avatar integration */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Effectif des joueurs inscrits ({matchData.roster.length})
+                  Effectif affiché ({filteredRoster.length} sur {matchData.roster.length})
                 </label>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-400">
@@ -267,15 +450,38 @@ export const RosterModal: React.FC<RosterModalProps> = ({
                   <button
                     type="button"
                     onClick={handleGenerateAllAvatars}
-                    className="sm:hidden text-xs text-emerald-700 font-bold"
+                    className="sm:hidden text-xs text-emerald-700 font-bold cursor-pointer"
                   >
                     🪄 Colorer tous
                   </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {matchData.roster.map((player) => (
+              {filteredRoster.length === 0 ? (
+                <div className="text-center py-10 px-4 bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2.5">
+                  <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center mx-auto">
+                    <Search className="w-5 h-5" />
+                  </div>
+                  <div className="text-sm font-bold text-slate-800">
+                    Aucun joueur ne correspond à la recherche
+                  </div>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    {searchQuery
+                      ? `Aucun joueur trouvé pour « ${searchQuery} ». Vérifiez l'orthographe ou réinitialisez les critères.`
+                      : 'Aucun joueur ne correspond aux filtres de poste ou de présence sélectionnés.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Réinitialiser les filtres</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {filteredRoster.map((player) => (
                   <div
                     key={player.id}
                     className={`flex items-center justify-between p-2 rounded-xl border transition-all ${
@@ -364,6 +570,7 @@ export const RosterModal: React.FC<RosterModalProps> = ({
                   </div>
                 ))}
               </div>
+              )}
             </div>
 
           </div>

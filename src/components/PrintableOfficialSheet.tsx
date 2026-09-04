@@ -4,13 +4,39 @@ import { getEventTypeConfig } from '../utils/season';
 
 interface PrintableOfficialSheetProps {
   matchData: MatchData;
+  periodIndex?: number;
+  id?: string;
+  isPrintOnly?: boolean;
+  className?: string;
 }
 
-export const PrintableOfficialSheet: React.FC<PrintableOfficialSheetProps> = ({ matchData }) => {
+export const PrintableOfficialSheet: React.FC<PrintableOfficialSheetProps> = ({
+  matchData,
+  periodIndex,
+  id = 'official-printable-sheet',
+  isPrintOnly = true,
+  className,
+}) => {
   const eventConfig = getEventTypeConfig(matchData.eventType);
 
+  const periodsToRender =
+    typeof periodIndex === 'number' && periodIndex >= 0 && periodIndex < matchData.periods.length
+      ? [matchData.periods[periodIndex]]
+      : matchData.periods;
+
+  const currentPeriod = typeof periodIndex === 'number' ? matchData.periods[periodIndex] : null;
+
   return (
-    <div id="official-printable-sheet" className="hidden print:block font-sans text-black p-4 bg-white min-h-screen">
+    <div
+      id={id}
+      className={
+        className
+          ? className
+          : isPrintOnly
+          ? 'hidden print:block font-sans text-black p-4 bg-white min-h-screen'
+          : 'font-sans text-black p-4 bg-white'
+      }
+    >
       {/* Printable Header Bar matching screenshot */}
       <table className="w-full border-collapse border-2 border-black text-sm mb-4">
         <tbody>
@@ -18,16 +44,25 @@ export const PrintableOfficialSheet: React.FC<PrintableOfficialSheetProps> = ({ 
             <td className="border-2 border-black p-2 font-bold italic w-1/4">
               Type & Saison<br />
               <span className="text-base font-extrabold not-italic">
-                {eventConfig.label} • Saison {matchData.season || '2026/2027'}
+                {eventConfig.label} • {matchData.season || '2026/2027'}
               </span>
+              {currentPeriod && (
+                <div className="text-xs font-bold text-slate-800 uppercase mt-0.5">
+                  ▶ {currentPeriod.title} ({currentPeriod.durationMinutes || 15} min)
+                </div>
+              )}
             </td>
             <td className="border-2 border-black p-2 font-bold italic w-1/4">
               {matchData.eventType === 'entrainement' ? 'Cadre / Séance' : 'Adversaire'}<br />
               <span className="text-base font-normal not-italic">{matchData.opponent || '____________________'}</span>
             </td>
             <td className="border-2 border-black p-2 font-bold italic w-1/4 text-center">
-              Score final<br />
-              <span className="text-base font-bold not-italic">{matchData.finalScore || '-'}</span>
+              {currentPeriod ? 'Score période / match' : 'Score final'}<br />
+              <span className="text-base font-bold not-italic">
+                {currentPeriod
+                  ? `${currentPeriod.team1.scoreMatch || '0'} - ${currentPeriod.team2.scoreMatch || '0'}${matchData.finalScore ? ` (Total: ${matchData.finalScore})` : ''}`
+                  : matchData.finalScore || '-'}
+              </span>
             </td>
             <td className="border-2 border-black p-2 font-bold italic w-1/4 text-center">
               Date<br />
@@ -37,8 +72,8 @@ export const PrintableOfficialSheet: React.FC<PrintableOfficialSheetProps> = ({ 
         </tbody>
       </table>
 
-      {/* For each period in matchData */}
-      {matchData.periods.map((period) => (
+      {/* For each period in periodsToRender */}
+      {periodsToRender.map((period) => (
         <div key={period.id} className="mb-6 page-break-inside-avoid">
           <table className="w-full border-collapse border-2 border-black text-xs">
             <thead>
@@ -99,14 +134,14 @@ export const PrintableOfficialSheet: React.FC<PrintableOfficialSheetProps> = ({ 
                           Score équipe 1
                         </div>
                         <div className="mb-2">
-                          <span className="font-bold">{period.team1.scoreMatch || '___'}</span> à <span className="font-bold">{period.team1.scoreOpponent || '___'}</span>
+                          <span className="font-bold">{period.team1.scoreMatch ?? '0'}</span> à <span className="font-bold">{period.team1.scoreOpponent ?? '0'}</span>
                         </div>
                         <div className="font-bold text-[11px]">Schootout</div>
                         <div className="mb-2">
                           <span className="font-bold">{period.team1.shootoutScore || '___'}</span> à <span className="font-bold">{period.team1.shootoutOpponent || '___'}</span>
                         </div>
                         <div className="font-bold text-[11px] mb-2">
-                          Point = {period.team1.points || '___'}
+                          Point = {period.team1.points ?? '0'}
                         </div>
                         <div className="text-[10px] font-semibold text-slate-700 mb-3">
                           {period.team1.result || 'Victoire / Défaite'}
@@ -116,14 +151,14 @@ export const PrintableOfficialSheet: React.FC<PrintableOfficialSheetProps> = ({ 
                           Score équipe 2
                         </div>
                         <div className="mb-2">
-                          <span className="font-bold">{period.team2.scoreMatch || '___'}</span> à <span className="font-bold">{period.team2.scoreOpponent || '___'}</span>
+                          <span className="font-bold">{period.team2.scoreMatch ?? '0'}</span> à <span className="font-bold">{period.team2.scoreOpponent ?? '0'}</span>
                         </div>
                         <div className="font-bold text-[11px]">Schootout</div>
                         <div className="mb-2">
                           <span className="font-bold">{period.team2.shootoutScore || '___'}</span> à <span className="font-bold">{period.team2.shootoutOpponent || '___'}</span>
                         </div>
                         <div className="font-bold text-[11px] mb-2">
-                          Point = {period.team2.points || '___'}
+                          Point = {period.team2.points ?? '0'}
                         </div>
                         <div className="text-[10px] font-semibold text-slate-700">
                           {period.team2.result || 'Victoire / Défaite'}

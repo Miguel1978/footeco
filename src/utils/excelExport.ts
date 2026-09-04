@@ -143,7 +143,107 @@ export function exportMatchToExcel(matchData: MatchData, filename?: string) {
     { wch: 12 }
   ];
 
-  XLSX.utils.book_append_sheet(wb, ws1, 'Feuille de Match');
+  XLSX.utils.book_append_sheet(wb, ws1, 'Les 4 Matchs');
+
+  // ==========================================
+  // INDIVIDUAL SHEETS FOR EACH OF THE 4 MATCHES
+  // ==========================================
+  matchData.periods.forEach((period, idx) => {
+    const periodSheetData: (string | number)[][] = [];
+    const sheetTitle = period.title || `Match ${idx + 1}`;
+
+    periodSheetData.push([`FE12 - ${sheetTitle.toUpperCase()} (${period.durationMinutes || 15} MIN)`]);
+    periodSheetData.push([`Type : ${eventConfig.label}`, `Saison : ${season}`, `Date : ${matchDate}`, `Adversaire : ${opponent}`]);
+    periodSheetData.push([]);
+
+    const t1ScoreStr = `${period.team1.scoreMatch || '0'} - ${period.team1.scoreOpponent || '0'}`;
+    const t2ScoreStr = `${period.team2.scoreMatch || '0'} - ${period.team2.scoreOpponent || '0'}`;
+    const t1Shootout = `${period.team1.shootoutScore || '0'} - ${period.team1.shootoutOpponent || '0'}`;
+    const t2Shootout = `${period.team2.shootoutScore || '0'} - ${period.team2.shootoutOpponent || '0'}`;
+
+    periodSheetData.push([
+      `ÉQUIPE 1 (JAUNE) - Coach: ${period.team1.coachName || 'Seb'}`,
+      `Score: ${t1ScoreStr}`,
+      `Shootout: ${t1Shootout}`,
+      `Pts: ${period.team1.points || '0'} (${period.team1.result || '-'})`,
+      '',
+      `ÉQUIPE 2 (ROUGE) - Coach: ${period.team2.coachName || 'Miguel'}`,
+      `Score: ${t2ScoreStr}`,
+      `Shootout: ${t2Shootout}`,
+      `Pts: ${period.team2.points || '0'} (${period.team2.result || '-'})`,
+      ''
+    ]);
+
+    periodSheetData.push([
+      'N°',
+      'Joueur Équipe 1',
+      'Poste',
+      'Éval (1-4)',
+      'Shootout',
+      'N°',
+      'Joueur Équipe 2',
+      'Poste',
+      'Éval (1-4)',
+      'Shootout'
+    ]);
+
+    for (let i = 0; i < 7; i++) {
+      const s1 = period.team1.titulaires[i];
+      const s2 = period.team2.titulaires[i];
+      periodSheetData.push([
+        i + 1,
+        s1?.playerName || '—',
+        s1?.position || '',
+        s1?.rating ? `${s1.rating}★` : '',
+        s1?.shootout || '',
+        i + 1,
+        s2?.playerName || '—',
+        s2?.position || '',
+        s2?.rating ? `${s2.rating}★` : '',
+        s2?.shootout || ''
+      ]);
+    }
+
+    periodSheetData.push([
+      'Remp.',
+      'Remplaçants Équipe 1',
+      '',
+      '',
+      '',
+      'Remp.',
+      'Remplaçants Équipe 2',
+      '',
+      '',
+      ''
+    ]);
+
+    const maxSubs = Math.max(period.team1.remplacants.length, period.team2.remplacants.length, 1);
+    for (let i = 0; i < maxSubs; i++) {
+      const sub1 = period.team1.remplacants[i];
+      const sub2 = period.team2.remplacants[i];
+      periodSheetData.push([
+        sub1 ? `R${i + 1}` : '',
+        sub1?.playerName || (i === 0 && !sub1 ? '(Aucun)' : ''),
+        sub1?.position || '',
+        sub1?.rating ? `${sub1.rating}★` : '',
+        sub1?.shootout || '',
+        sub2 ? `R${i + 1}` : '',
+        sub2?.playerName || (i === 0 && !sub2 ? '(Aucun)' : ''),
+        sub2?.position || '',
+        sub2?.rating ? `${sub2.rating}★` : '',
+        sub2?.shootout || ''
+      ]);
+    }
+
+    if (period.notes) {
+      periodSheetData.push([]);
+      periodSheetData.push([`Observations : ${period.notes}`]);
+    }
+
+    const wsPeriod = XLSX.utils.aoa_to_sheet(periodSheetData);
+    wsPeriod['!cols'] = ws1['!cols'];
+    XLSX.utils.book_append_sheet(wb, wsPeriod, sheetTitle);
+  });
 
   // ==========================================
   // SHEET 2: STATISTIQUES & TEMPS DE JEU
@@ -309,6 +409,6 @@ export function exportMatchToExcel(matchData: MatchData, filename?: string) {
   XLSX.utils.book_append_sheet(wb, ws3, 'Effectif');
 
   // Write and download Excel file
-  const outFilename = filename || `Feuille_de_Match_FE12_${opponent.replace(/\s+/g, '_')}_${matchDate.replace(/\//g, '-')}.xlsx`;
+  const outFilename = filename || `Feuille_FootEco_FE12_Les_4_Matchs_${opponent.replace(/\s+/g, '_')}_${matchDate.replace(/\//g, '-')}.xlsx`;
   XLSX.writeFile(wb, outFilename);
 }

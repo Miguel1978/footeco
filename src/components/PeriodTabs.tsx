@@ -1,14 +1,16 @@
 import React from 'react';
 import { PeriodMatch } from '../types';
-import { Clock, Plus, LayoutGrid, Eye, Shield } from 'lucide-react';
+import { Clock, Plus, LayoutGrid, Eye, Shield, TrendingUp } from 'lucide-react';
 
 interface PeriodTabsProps {
   periods: PeriodMatch[];
   selectedPeriodIndex: number;
   onSelectPeriodIndex: (index: number) => void;
-  viewMode: 'single' | 'all' | 'tactical';
-  onChangeViewMode: (mode: 'single' | 'all' | 'tactical') => void;
+  viewMode: 'single' | 'all' | 'tactical' | 'chart';
+  onChangeViewMode: (mode: 'single' | 'all' | 'tactical' | 'chart') => void;
   onOpenDurationModal: () => void;
+  isQuickChartOpen?: boolean;
+  onToggleQuickChart?: () => void;
 }
 
 export const PeriodTabs: React.FC<PeriodTabsProps> = ({
@@ -18,6 +20,8 @@ export const PeriodTabs: React.FC<PeriodTabsProps> = ({
   viewMode,
   onChangeViewMode,
   onOpenDurationModal,
+  isQuickChartOpen,
+  onToggleQuickChart,
 }) => {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 mb-6 print:hidden">
@@ -100,7 +104,36 @@ export const PeriodTabs: React.FC<PeriodTabsProps> = ({
           <Shield className="w-3.5 h-3.5 text-emerald-600" />
           <span>Terrain 7v7</span>
         </button>
+
+        <button
+          onClick={() => onChangeViewMode('chart')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+            viewMode === 'chart'
+              ? 'bg-white text-slate-900 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Graphique</span>
+        </button>
       </div>
+
+      {/* Quick Chart Inline Toggle when on single or all view */}
+      {onToggleQuickChart && viewMode !== 'chart' && (
+        <button
+          type="button"
+          onClick={onToggleQuickChart}
+          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 border shrink-0 ${
+            isQuickChartOpen
+              ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-2xs'
+              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+          }`}
+          title="Afficher/masquer le graphique d'évolution du score directement au-dessus de la feuille"
+        >
+          <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />
+          <span>{isQuickChartOpen ? 'Masquer le graphique' : 'Aperçu Graphique'}</span>
+        </button>
+      )}
 
     </div>
   );

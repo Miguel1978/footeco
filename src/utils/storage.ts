@@ -2,28 +2,90 @@ import { MatchData, Player, Position } from '../types';
 import { getInitialMatchData } from '../initialData';
 
 const STORAGE_KEY = 'fe12_match_sheet_data_v1';
+const STORAGE_BACKUP_KEY = 'fe12_match_sheet_data_backup_v1';
+const LAST_SAVED_KEY = 'fe12_match_sheet_last_saved_at';
 const HISTORY_KEY = 'fe12_match_history_v1';
 
-export function loadMatchData(): MatchData {
+export function getLastLocalSaveTimestamp(): Date | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
+    const raw = localStorage.getItem(LAST_SAVED_KEY);
+    return raw ? new Date(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function loadMatchData(): MatchData {
+  const tryParse = (rawStr: string | null): MatchData | null => {
+    if (!rawStr) return null;
+    try {
+      const parsed = JSON.parse(rawStr);
       if (parsed && Array.isArray(parsed.periods) && parsed.periods.length > 0) {
-        return parsed;
+        // Ensure starting scores and points are defaulted to '0' if empty
+        const normalizedPeriods = parsed.periods.map((p: any) => ({
+          ...p,
+          team1: {
+            ...p.team1,
+            scoreMatch: p.team1?.scoreMatch !== undefined && p.team1?.scoreMatch !== '' ? p.team1.scoreMatch : '0',
+            scoreOpponent: p.team1?.scoreOpponent !== undefined && p.team1?.scoreOpponent !== '' ? p.team1.scoreOpponent : '0',
+            points: p.team1?.points !== undefined && p.team1?.points !== '' ? p.team1.points : '0',
+          },
+          team2: {
+            ...p.team2,
+            scoreMatch: p.team2?.scoreMatch !== undefined && p.team2?.scoreMatch !== '' ? p.team2.scoreMatch : '0',
+            scoreOpponent: p.team2?.scoreOpponent !== undefined && p.team2?.scoreOpponent !== '' ? p.team2.scoreOpponent : '0',
+            points: p.team2?.points !== undefined && p.team2?.points !== '' ? p.team2.points : '0',
+          },
+        }));
+
+        return {
+          ...parsed,
+          finalScore: parsed.finalScore !== undefined && parsed.finalScore !== '' ? parsed.finalScore : '0 - 0',
+          periods: normalizedPeriods,
+        };
       }
+    } catch (e) {
+      console.error('Error parsing stored match data', e);
+    }
+    return null;
+  };
+
+  try {
+    // 1. Try primary storage
+    const primary = tryParse(localStorage.getItem(STORAGE_KEY));
+    if (primary) return primary;
+
+    // 2. Fallback to backup storage if primary was corrupted
+    const backup = tryParse(localStorage.getItem(STORAGE_BACKUP_KEY));
+    if (backup) {
+      console.warn('Restored match data from local backup copy.');
+      return backup;
     }
   } catch (e) {
-    console.error('Error loading match data from localStorage', e);
+    console.error('Error accessing localStorage on loadMatchData', e);
   }
+
   return getInitialMatchData();
 }
 
-export function saveMatchData(data: MatchData): void {
+export function saveMatchData(data: MatchData): boolean {
+  if (!data || !Array.isArray(data.periods)) return false;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    const serialized = JSON.stringify(data);
+    localStorage.setItem(STORAGE_KEY, serialized);
+    const nowIso = new Date().toISOString();
+    localStorage.setItem(LAST_SAVED_KEY, nowIso);
+
+    // Also update backup key to prevent data loss
+    try {
+      localStorage.setItem(STORAGE_BACKUP_KEY, serialized);
+    } catch {
+      // Non-critical if backup fails due to space limits
+    }
+    return true;
   } catch (e) {
-    console.error('Error saving match data', e);
+    console.error('Error saving match data to localStorage', e);
+    return false;
   }
 }
 

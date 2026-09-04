@@ -49,6 +49,8 @@ export interface PeriodMatch {
 
 export type EventType = 'championnat' | 'amical' | 'entrainement' | 'tournoi';
 
+export type FirebaseSyncState = 'idle' | 'syncing' | 'synced' | 'error' | 'offline';
+
 export interface MatchData {
   id: string;
   matchTitle: string; // "Match FE12 Bas-Valais"
@@ -148,7 +150,5 @@ export interface UserProfile {
   createdAt?: string;
   lastLoginAt?: string;
 }
-
-declare module 'html2pdf.js';
 
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MatchData } from '../types';
 import { 
   Trophy, 
@@ -15,6 +15,7 @@ import {
   Shield,
   FileSpreadsheet,
   FileText,
+  FileDown,
   Loader2,
   Check,
   LogIn,
@@ -28,15 +29,22 @@ import {
   CalendarRange,
   Sparkles,
   ExternalLink,
-  BookOpen
+  BookOpen,
+  Copy,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { exportMatchAsJSON } from '../utils/storage';
 import { getInitialMatchData } from '../initialData';
 import { exportMatchToExcel } from '../utils/excelExport';
 import { exportMatchToPdf } from '../utils/pdfExport';
+import { PeriodPdfPreviewModal } from './PeriodPdfPreviewModal';
+import { CopyCompoModal } from './CopyCompoModal';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthModal } from './AuthModal';
 import { UserManagementModal } from './UserManagementModal';
+import { FirebaseSyncBadge } from './FirebaseSyncBadge';
+import { FirebaseSyncState } from '../types';
 import { 
   EventType, 
   EVENT_TYPES_CONFIG, 
@@ -59,8 +67,13 @@ interface HeaderProps {
   timerSecondsLeft: number;
   isTimerRunning: boolean;
   onToggleTimer: () => void;
+  firebaseSyncState?: FirebaseSyncState;
+  lastSyncedAt?: Date | null;
+  lastLocalSavedAt?: Date | null;
+  syncErrorMessage?: string | null;
+  onForceSync?: () => void;
+  // Legacy backward-compatibility props
   saveStatus?: 'saved' | 'saving';
-  lastSavedAt?: Date;
   onForceSave?: () => void;
 }
 
@@ -77,15 +90,88 @@ export const Header: React.FC<HeaderProps> = ({
   timerSecondsLeft,
   isTimerRunning,
   onToggleTimer,
+  firebaseSyncState = 'synced',
+  lastSyncedAt,
+  lastLocalSavedAt,
+  syncErrorMessage,
+  onForceSync,
   saveStatus = 'saved',
-  lastSavedAt,
   onForceSave,
 }) => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [showConfirmReset, setShowConfirmReset] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [pdfExportSuccess, setPdfExportSuccess] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [excelExportSuccess, setExcelExportSuccess] = useState(false);
+  const [showPeriodPdfModal, setShowPeriodPdfModal] = useState(false);
+  const [showCopyCompoModal, setShowCopyCompoModal] = useState(false);
+  const [copyNotification, setCopyNotification] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Fullscreen event listener to keep state in sync
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const doc = document as any;
+      const isFull = !!(
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement
+      );
+      setIsFullscreen(isFull);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      const doc = document as any;
+      const docEl = document.documentElement as any;
+
+      const isFull = !!(
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement
+      );
+
+      if (!isFull) {
+        if (docEl.requestFullscreen) {
+          await docEl.requestFullscreen();
+        } else if (docEl.webkitRequestFullscreen) {
+          await docEl.webkitRequestFullscreen();
+        } else if (docEl.mozRequestFullScreen) {
+          await docEl.mozRequestFullScreen();
+        } else if (docEl.msRequestFullscreen) {
+          await docEl.msRequestFullscreen();
+        }
+      } else {
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        } else if (doc.mozCancelFullScreen) {
+          await doc.mozCancelFullScreen();
+        } else if (doc.msExitFullscreen) {
+          await doc.msExitFullscreen();
+        }
+      }
+    } catch (err) {
+      console.warn('Erreur lors du basculement plein écran:', err);
+    }
+  };
 
   // Auth modals & context
   const { user, userProfile, isAdmin, logout } = useAuth();
@@ -98,7 +184,11 @@ export const Header: React.FC<HeaderProps> = ({
   const handleExportPdf = async () => {
     setIsExportingPdf(true);
     try {
-      await exportMatchToPdf(matchData);
+      const success = await exportMatchToPdf(matchData);
+      if (success) {
+        setPdfExportSuccess(true);
+        setTimeout(() => setPdfExportSuccess(false), 2500);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -199,44 +289,24 @@ export const Header: React.FC<HeaderProps> = ({
                 {matchData.periods.length}x {matchData.periods[0]?.durationMinutes || 15} min ({totalMatchMinutes} min total)
               </span>
 
-              {/* Sync / Auto-save Indicator Badge */}
-              <button
-                type="button"
-                onClick={onForceSave}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all cursor-pointer ${
-                  saveStatus === 'saving'
-                    ? 'bg-slate-100 text-slate-600 border-slate-300 shadow-inner'
-                    : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                }`}
-                title={
-                  saveStatus === 'saving'
-                    ? 'Enregistrement des modifications en cours...'
-                    : lastSavedAt
-                    ? `Données sauvegardées en local à ${lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}. Cliquez pour forcer la sauvegarde.`
-                    : 'Données sauvegardées en direct. Cliquez pour forcer la sauvegarde.'
-                }
+              {/* Dynamic Firebase Synchronization Badge */}
+              <FirebaseSyncBadge
+                syncState={firebaseSyncState}
+                lastSyncedAt={lastSyncedAt ?? null}
+                lastLocalSavedAt={lastLocalSavedAt ?? null}
+                errorMessage={syncErrorMessage}
+                onForceSync={onForceSync || onForceSave || (() => {})}
+                isAuthenticated={!!user}
+              />
+
+              {/* Local Storage Auto-Save Indicator */}
+              <div 
+                className="hidden xl:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs"
+                title="Sauvegarde automatique locale (localStorage) active à chaque modification du score ou de la composition"
               >
-                {saveStatus === 'saving' ? (
-                  <>
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-500"></span>
-                    </span>
-                    <span className="text-slate-600">Sauvegarde...</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="relative flex h-2 w-2">
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 ring-2 ring-emerald-400/40"></span>
-                    </span>
-                    <span className="text-emerald-800">
-                      {lastSavedAt
-                        ? `Sauvegardé (${lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
-                        : 'Sauvegardé'}
-                    </span>
-                  </>
-                )}
-              </button>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Auto-sauvegardé</span>
+              </div>
             </div>
             <p className="text-xs text-slate-500">Feuille de match officielle & rotation des joueurs</p>
           </div>
@@ -336,12 +406,23 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Bilan & Évals</span>
           </button>
 
-          {/* Export Excel (.xlsx) */}
+          {/* Copier Compo */}
+          <button
+            type="button"
+            onClick={() => setShowCopyCompoModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-800 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg shadow-2xs transition-all active:scale-95 cursor-pointer"
+            title="Copier ou dupliquer la composition d'un match vers les autres"
+          >
+            <Copy className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Copier Compo</span>
+          </button>
+
+          {/* Export Excel (.xlsx - Les 4 Matchs) */}
           <button
             onClick={handleExportExcel}
             disabled={isExportingExcel}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-lg shadow-2xs transition-all active:scale-95 disabled:opacity-50"
-            title="Exporter la feuille de match et les statistiques en format Excel (.xlsx)"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-lg shadow-2xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+            title="Exporter les 4 matchs et statistiques complètes en format Excel (.xlsx)"
           >
             {isExportingExcel ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
@@ -350,32 +431,85 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
             )}
-            <span>Excel (.xlsx)</span>
+            <span>Excel (4 Matchs)</span>
           </button>
 
-          {/* Export PDF */}
+          {/* Bouton d'accès rapide 'Exporter tout' (Export PDF complet de toutes les périodes sans menu intermédiaire) */}
           <button
+            id="btn-quick-export-all-pdf"
+            type="button"
             onClick={handleExportPdf}
             disabled={isExportingPdf}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-950 bg-rose-100 hover:bg-rose-200 border border-rose-300 rounded-lg shadow-2xs transition-all active:scale-95 disabled:opacity-50"
-            title="Générer et télécharger la feuille de match en PDF officiel (format PrintableOfficialSheet)"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-95 disabled:opacity-60 rounded-lg shadow-2xs transition-all cursor-pointer ring-1 ring-rose-500"
+            title="Exporter tout : Télécharger directement le PDF officiel complet de toutes les périodes sans ouvrir le menu contextuel de chaque période (4 pages A4 paysage)"
           >
             {isExportingPdf ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-700" />
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-white shrink-0" />
+                <span>Export en cours...</span>
+              </>
+            ) : pdfExportSuccess ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-white shrink-0" />
+                <span>Tout exporté !</span>
+              </>
             ) : (
-              <FileText className="w-3.5 h-3.5 text-rose-700" />
+              <>
+                <FileDown className="w-3.5 h-3.5 text-white shrink-0" />
+                <span>Exporter tout</span>
+              </>
             )}
-            <span>Exporter en PDF</span>
+          </button>
+
+          {/* Aperçu PDF & Export Période */}
+          <button
+            type="button"
+            onClick={() => setShowPeriodPdfModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-950 bg-indigo-100 hover:bg-indigo-200 border border-indigo-300 rounded-lg shadow-2xs transition-all active:scale-95 cursor-pointer"
+            title={`Aperçu avant impression et export PDF (${matchData.periods[activePeriodIndex]?.title || `Période ${activePeriodIndex + 1}`} ou 4 Matchs)`}
+          >
+            <FileText className="w-3.5 h-3.5 text-indigo-700" />
+            <span>Aperçu PDF</span>
           </button>
 
           {/* Print Sheet */}
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors cursor-pointer"
             title="Imprimer directement la feuille officielle"
           >
             <Printer className="w-3.5 h-3.5 text-slate-600" />
             <span>Imprimer</span>
+          </button>
+
+          {/* Bascule Plein Écran (Tablette / Match) */}
+          <button
+            id="navbar-toggle-fullscreen-btn"
+            type="button"
+            onClick={toggleFullscreen}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border shadow-2xs transition-all active:scale-95 cursor-pointer ${
+              isFullscreen
+                ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 ring-2 ring-amber-300/60'
+                : 'bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border-slate-300'
+            }`}
+            title={
+              isFullscreen
+                ? "Quitter le mode plein écran (Échap)"
+                : "Passer en mode plein écran (maximise l'espace de travail sur tablette pendant le match)"
+            }
+            aria-label={isFullscreen ? "Quitter le mode plein écran" : "Basculer en mode plein écran"}
+          >
+            {isFullscreen ? (
+              <>
+                <Minimize2 className="w-3.5 h-3.5 text-white shrink-0" />
+                <span>Quitter Plein Écran</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span>Plein Écran</span>
+              </>
+            )}
           </button>
 
           {/* Export JSON */}
@@ -737,6 +871,37 @@ export const Header: React.FC<HeaderProps> = ({
         isOpen={showUsersModal}
         onClose={() => setShowUsersModal(false)}
       />
+
+      {/* Period PDF Preview & Export Modal */}
+      <PeriodPdfPreviewModal
+        isOpen={showPeriodPdfModal}
+        onClose={() => setShowPeriodPdfModal(false)}
+        matchData={matchData}
+        initialPeriodIndex={activePeriodIndex}
+      />
+
+      {/* Composition Copy & Duplicate Modal */}
+      <CopyCompoModal
+        isOpen={showCopyCompoModal}
+        onClose={() => setShowCopyCompoModal(false)}
+        matchData={matchData}
+        activePeriodIndex={activePeriodIndex}
+        onUpdatePeriods={(updatedPeriods, msg) => {
+          onUpdateMatch((prev) => ({ ...prev, periods: updatedPeriods }));
+          if (msg) {
+            setCopyNotification(msg);
+            setTimeout(() => setCopyNotification(null), 3500);
+          }
+        }}
+      />
+
+      {/* Copy Notification Toast */}
+      {copyNotification && (
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border border-slate-700 animate-in fade-in slide-in-from-bottom-2 text-xs font-bold">
+          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{copyNotification}</span>
+        </div>
+      )}
     </header>
 
   );

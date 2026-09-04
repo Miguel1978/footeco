@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { PeriodMatch, PlayerSlot, Position, Player } from '../types';
 import { 
   Plus, 
@@ -24,6 +25,7 @@ import {
 import { RatingInput } from './RatingInput';
 import { PlayerAvatar } from './PlayerAvatar';
 import { CoachAutocompleteInput } from './CoachAutocompleteInput';
+import { playGoalCelebrationSound } from '../utils/audio';
 
 interface MatchSheetTableProps {
   period: PeriodMatch;
@@ -31,6 +33,8 @@ interface MatchSheetTableProps {
   allPeriods: PeriodMatch[];
   onUpdatePeriod: (updatedPeriod: PeriodMatch) => void;
   onCopyFromPeriod: (sourcePeriodId: number) => void;
+  onDuplicateToAllPeriods?: (sourcePeriodId: number) => void;
+  onOpenCopyModal?: () => void;
   onOpenDurationModal: () => void;
 }
 
@@ -42,6 +46,8 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
   allPeriods,
   onUpdatePeriod,
   onCopyFromPeriod,
+  onDuplicateToAllPeriods,
+  onOpenCopyModal,
   onOpenDurationModal,
 }) => {
   const [showRosterPanel, setShowRosterPanel] = useState<boolean>(true);
@@ -171,15 +177,42 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
     setDraggedPlayer(null);
   };
 
+  // State to track visual goal celebration / pulsation animation
+  const [goalCelebration, setGoalCelebration] = useState<{ team: 'team1' | 'team2'; key: number } | null>(null);
+
+  // Trigger rewarding visual pulsation and sound chime
+  const triggerGoalCelebration = (team: 'team1' | 'team2') => {
+    try {
+      playGoalCelebrationSound();
+    } catch (e) {
+      // Audio fallback
+    }
+    setGoalCelebration({ team, key: Date.now() });
+    setTimeout(() => {
+      setGoalCelebration((curr) => (curr?.team === team ? null : curr));
+    }, 2400);
+  };
+
   // Quick auto-points & result calculation helper
   const handleScoreTeamChange = (team: 'team1' | 'team2', teamScore: string, oppScore: string) => {
+    const prevScore = parseInt(team === 'team1' ? period.team1.scoreMatch : period.team2.scoreMatch, 10) || 0;
     const s1 = parseInt(teamScore, 10);
     const s2 = parseInt(oppScore, 10);
+
+    // Goal scored by Footeco team! Trigger pulsating animation
+    if (!isNaN(s1) && s1 > prevScore) {
+      triggerGoalCelebration(team);
+    }
+
     let result: 'Victoire' | 'Nul' | 'Défaite' | '' = '';
-    let points = '';
+    let points = '0';
 
     if (!isNaN(s1) && !isNaN(s2)) {
-      if (s1 > s2) {
+      if (s1 === 0 && s2 === 0) {
+        // Début de match à 0-0
+        result = '';
+        points = '0';
+      } else if (s1 > s2) {
         result = 'Victoire';
         points = '3';
       } else if (s1 === s2) {
@@ -189,6 +222,8 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
         result = 'Défaite';
         points = '0';
       }
+    } else {
+      points = '0';
     }
 
     if (team === 'team1') {
@@ -196,6 +231,22 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
     } else {
       handleUpdateTeam2({ scoreMatch: teamScore, scoreOpponent: oppScore, result, points });
     }
+  };
+
+  // Helper to increment/decrement Footeco score directly with tactile buttons
+  const handleIncrementFootecoScore = (team: 'team1' | 'team2', delta: number) => {
+    const currentScore = parseInt(team === 'team1' ? period.team1.scoreMatch : period.team2.scoreMatch, 10) || 0;
+    const oppScore = team === 'team1' ? period.team1.scoreOpponent : period.team2.scoreOpponent;
+    const newScore = Math.max(0, currentScore + delta);
+    handleScoreTeamChange(team, newScore.toString(), oppScore);
+  };
+
+  // Helper to increment opponent score directly
+  const handleIncrementOpponentScore = (team: 'team1' | 'team2', delta: number) => {
+    const teamScore = team === 'team1' ? period.team1.scoreMatch : period.team2.scoreMatch;
+    const currentOpp = parseInt(team === 'team1' ? period.team1.scoreOpponent : period.team2.scoreOpponent, 10) || 0;
+    const newOpp = Math.max(0, currentOpp + delta);
+    handleScoreTeamChange(team, teamScore, newOpp.toString());
   };
 
   // List of player names for autocomplete / suggestions
@@ -362,23 +413,49 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
           </div>
 
           {/* Copy / Preset Compo */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center flex-wrap gap-2">
             {allPeriods.length > 1 && (
-              <div className="flex items-center gap-1">
-                <span className="text-slate-500 font-medium">Copier la compo depuis :</span>
+              <div className="flex items-center flex-wrap gap-1">
+                <span className="text-slate-500 font-medium text-xs">Copier compo :</span>
                 {allPeriods
                   .filter(p => p.id !== period.id)
                   .map(p => (
                     <button
                       key={p.id}
                       onClick={() => onCopyFromPeriod(p.id)}
-                      className="px-2 py-0.5 bg-white hover:bg-slate-200 border border-slate-300 rounded text-[11px] font-semibold text-slate-700 transition-colors"
-                      title={`Copier la composition du ${p.title}`}
+                      className="px-2 py-0.5 bg-white hover:bg-slate-200 border border-slate-300 rounded text-[11px] font-semibold text-slate-700 transition-colors cursor-pointer"
+                      title={`Copier la composition du ${p.title} vers ${period.title}`}
                     >
-                      {p.title}
+                      depuis {p.title}
                     </button>
                   ))}
               </div>
+            )}
+
+            {/* Quick Duplicate to all other periods */}
+            {onDuplicateToAllPeriods && allPeriods.length > 1 && (
+              <button
+                type="button"
+                onClick={() => onDuplicateToAllPeriods(period.id)}
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-[11px] font-bold transition-colors cursor-pointer"
+                title={`Dupliquer la composition de ${period.title} sur TOUS les autres matchs`}
+              >
+                <Copy className="w-3 h-3" />
+                <span>Dupliquer sur les 4 matchs</span>
+              </button>
+            )}
+
+            {/* Open Copy / Swap Modal */}
+            {onOpenCopyModal && (
+              <button
+                type="button"
+                onClick={onOpenCopyModal}
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-800 hover:bg-slate-900 text-white rounded text-[11px] font-bold shadow-2xs transition-colors cursor-pointer"
+                title="Ouvrir le gestionnaire complet de copie, duplication et permutation de compos"
+              >
+                <Copy className="w-3 h-3" />
+                <span>Gestionnaire Compo</span>
+              </button>
             )}
           </div>
         </div>
@@ -391,7 +468,7 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
             <thead>
               <tr>
                 {/* Score Column Header */}
-                <th className="w-48 bg-slate-200 border-2 border-slate-900 p-2 text-center align-middle font-bold text-slate-900 italic">
+                <th className="w-52 bg-slate-200 border-2 border-slate-900 p-2 text-center align-middle font-bold text-slate-900 italic">
                   <div className="text-xs uppercase tracking-wider">{period.title}</div>
                   <div className="text-[11px] font-medium text-slate-600 font-sans">
                     Durée: {period.durationMinutes || 15} min
@@ -474,32 +551,133 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
               {/* Top row with Left Score Block */}
               <tr>
                 {/* LEFT SCORE PANEL FOR EQUIPE 1 & EQUIPE 2 */}
-                <td rowSpan={8} className="w-48 border-r-2 border-b-2 border-slate-900 p-3 align-top bg-slate-50/50 space-y-4">
+                <td rowSpan={8} className="w-52 border-r-2 border-b-2 border-slate-900 p-2.5 align-top bg-slate-50/50 space-y-3.5">
                   
-                  {/* Score Equipe 1 (Yellow banner) */}
-                  <div className="border border-slate-300 rounded-xl overflow-hidden bg-white shadow-xs">
-                    <div className="bg-[#FFFF00] px-2 py-1 text-xs font-bold text-slate-950 text-center border-b border-slate-300">
-                      Score {period.team1.teamName || 'équipe 1'}
+                  {/* Score Equipe 1 (Yellow banner) with Goal Pulsation */}
+                  <motion.div
+                    key={`score-card-t1-${period.id}-${goalCelebration?.key || 0}`}
+                    animate={
+                      goalCelebration?.team === 'team1'
+                        ? {
+                            scale: [1, 1.05, 0.98, 1.03, 1],
+                            boxShadow: [
+                              '0 0 0 0 rgba(16, 185, 129, 0)',
+                              '0 0 0 6px rgba(16, 185, 129, 0.45)',
+                              '0 0 0 10px rgba(16, 185, 129, 0.15)',
+                              '0 0 0 0 rgba(16, 185, 129, 0)',
+                            ],
+                          }
+                        : {}
+                    }
+                    transition={{ duration: 1.2, ease: 'easeOut' }}
+                    className={`relative border rounded-xl overflow-visible bg-white shadow-xs transition-colors ${
+                      goalCelebration?.team === 'team1'
+                        ? 'border-emerald-500 ring-2 ring-emerald-400'
+                        : 'border-slate-300'
+                    }`}
+                  >
+                    {/* Goal Celebratory Popup Badge */}
+                    <AnimatePresence>
+                      {goalCelebration?.team === 'team1' && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 12, scale: 0.5 }}
+                          animate={{ opacity: 1, y: -6, scale: 1.08 }}
+                          exit={{ opacity: 0, y: -16, scale: 0.8 }}
+                          transition={{ type: 'spring', damping: 14, stiffness: 350 }}
+                          className="absolute -top-3 left-1/2 -translate-x-1/2 z-30 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border-2 border-white flex items-center gap-1 whitespace-nowrap animate-pulse"
+                        >
+                          <span>⚽</span>
+                          <span>BUT FOOTECO !</span>
+                          <Sparkles className="w-3 h-3 text-yellow-300 fill-yellow-300" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <div className="bg-[#FFFF00] px-2 py-1 text-xs font-bold text-slate-950 flex items-center justify-between border-b border-slate-300 rounded-t-xl">
+                      <span className="truncate pr-1">Score {period.team1.teamName || 'équipe 1'}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateTeam1({ scoreMatch: '0', scoreOpponent: '0', points: '0', result: '' })}
+                        className="text-[10px] bg-white/80 hover:bg-white text-slate-800 font-bold px-1.5 py-0.5 rounded border border-slate-300/80 shadow-2xs transition-colors shrink-0 cursor-pointer"
+                        title="Réinitialiser au début de match (0-0, 0 pt)"
+                      >
+                        0-0
+                      </button>
                     </div>
+
                     <div className="p-2 space-y-2 text-xs">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="font-semibold text-slate-700">Score :</span>
-                        <div className="flex items-center gap-1 font-bold">
-                          <input
-                            type="text"
-                            value={period.team1.scoreMatch}
-                            onChange={(e) => handleScoreTeamChange('team1', e.target.value, period.team1.scoreOpponent)}
-                            placeholder="0"
-                            className="w-8 text-center font-bold bg-slate-100 border border-slate-300 rounded py-0.5"
-                          />
-                          <span>à</span>
-                          <input
-                            type="text"
-                            value={period.team1.scoreOpponent}
-                            onChange={(e) => handleScoreTeamChange('team1', period.team1.scoreMatch, e.target.value)}
-                            placeholder="0"
-                            className="w-8 text-center font-bold bg-slate-100 border border-slate-300 rounded py-0.5"
-                          />
+                      {/* Score Input Row with Goal Pulsation & Stepper */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-semibold text-slate-700 text-[11px]">Score :</span>
+                          <div className="flex items-center gap-1 font-bold">
+                            {/* Footeco Team 1 Score Input with Pulsation */}
+                            <div className="relative">
+                              <motion.input
+                                type="text"
+                                value={period.team1.scoreMatch}
+                                animate={
+                                  goalCelebration?.team === 'team1'
+                                    ? {
+                                        scale: [1, 1.25, 1],
+                                        backgroundColor: ['#ecfdf5', '#a7f3d0', '#ffffff'],
+                                        borderColor: ['#10b981', '#059669', '#cbd5e1'],
+                                      }
+                                    : {}
+                                }
+                                transition={{ duration: 0.8 }}
+                                onChange={(e) => handleScoreTeamChange('team1', e.target.value, period.team1.scoreOpponent)}
+                                placeholder="0"
+                                className={`w-8 text-center font-black rounded py-0.5 transition-all text-xs ${
+                                  goalCelebration?.team === 'team1'
+                                    ? 'bg-emerald-100 text-emerald-800 border-2 border-emerald-500 ring-2 ring-emerald-300'
+                                    : 'bg-slate-100 border border-slate-300 text-slate-900'
+                                }`}
+                                title="Buts marqués par l'équipe Footeco 1"
+                              />
+                            </div>
+                            <span className="text-slate-400 font-bold text-xs">à</span>
+                            <input
+                              type="text"
+                              value={period.team1.scoreOpponent}
+                              onChange={(e) => handleScoreTeamChange('team1', period.team1.scoreMatch, e.target.value)}
+                              placeholder="0"
+                              className="w-8 text-center font-bold bg-slate-100 border border-slate-300 rounded py-0.5 text-xs text-slate-900"
+                              title="Buts marqués par l'adversaire"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Tactile Quick Stepper Buttons (+1 Footeco / -1) */}
+                        <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-100">
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleIncrementFootecoScore('team1', 1)}
+                              className="px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] flex items-center gap-0.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                              title="Ajouter 1 but Footeco (+1) avec animation de célébration"
+                            >
+                              <span>+1 But</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleIncrementFootecoScore('team1', -1)}
+                              disabled={(parseInt(period.team1.scoreMatch, 10) || 0) <= 0}
+                              className="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 disabled:opacity-30 disabled:pointer-events-none font-bold text-[10px] flex items-center justify-center transition-colors cursor-pointer"
+                              title="Retirer un but (-1)"
+                            >
+                              -
+                            </button>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => handleIncrementOpponentScore('team1', 1)}
+                            className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-[9px] transition-colors cursor-pointer"
+                            title="Ajouter 1 but adversaire"
+                          >
+                            +1 Adv
+                          </button>
                         </div>
                       </div>
 
@@ -530,7 +708,7 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
                           type="text"
                           value={period.team1.points}
                           onChange={(e) => handleUpdateTeam1({ points: e.target.value })}
-                          placeholder="3"
+                          placeholder="0"
                           className="w-10 text-center font-bold bg-amber-50 border border-amber-300 rounded py-0.5 text-amber-900"
                         />
                       </div>
@@ -556,32 +734,133 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
                         ))}
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
 
-                  {/* Score Equipe 2 (Red banner) */}
-                  <div className="border border-slate-300 rounded-xl overflow-hidden bg-white shadow-xs">
-                    <div className="bg-[#FF0000] px-2 py-1 text-xs font-bold text-white text-center border-b border-slate-300">
-                      Score {period.team2.teamName || 'équipe 2'}
+                  {/* Score Equipe 2 (Red banner) with Goal Pulsation */}
+                  <motion.div
+                    key={`score-card-t2-${period.id}-${goalCelebration?.key || 0}`}
+                    animate={
+                      goalCelebration?.team === 'team2'
+                        ? {
+                            scale: [1, 1.05, 0.98, 1.03, 1],
+                            boxShadow: [
+                              '0 0 0 0 rgba(16, 185, 129, 0)',
+                              '0 0 0 6px rgba(16, 185, 129, 0.45)',
+                              '0 0 0 10px rgba(16, 185, 129, 0.15)',
+                              '0 0 0 0 rgba(16, 185, 129, 0)',
+                            ],
+                          }
+                        : {}
+                    }
+                    transition={{ duration: 1.2, ease: 'easeOut' }}
+                    className={`relative border rounded-xl overflow-visible bg-white shadow-xs transition-colors ${
+                      goalCelebration?.team === 'team2'
+                        ? 'border-emerald-500 ring-2 ring-emerald-400'
+                        : 'border-slate-300'
+                    }`}
+                  >
+                    {/* Goal Celebratory Popup Badge */}
+                    <AnimatePresence>
+                      {goalCelebration?.team === 'team2' && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 12, scale: 0.5 }}
+                          animate={{ opacity: 1, y: -6, scale: 1.08 }}
+                          exit={{ opacity: 0, y: -16, scale: 0.8 }}
+                          transition={{ type: 'spring', damping: 14, stiffness: 350 }}
+                          className="absolute -top-3 left-1/2 -translate-x-1/2 z-30 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border-2 border-white flex items-center gap-1 whitespace-nowrap animate-pulse"
+                        >
+                          <span>⚽</span>
+                          <span>BUT FOOTECO !</span>
+                          <Sparkles className="w-3 h-3 text-yellow-300 fill-yellow-300" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <div className="bg-[#FF0000] px-2 py-1 text-xs font-bold text-white flex items-center justify-between border-b border-slate-300 rounded-t-xl">
+                      <span className="truncate pr-1">Score {period.team2.teamName || 'équipe 2'}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateTeam2({ scoreMatch: '0', scoreOpponent: '0', points: '0', result: '' })}
+                        className="text-[10px] bg-white/20 hover:bg-white/30 text-white font-bold px-1.5 py-0.5 rounded border border-white/40 shadow-2xs transition-colors shrink-0 cursor-pointer"
+                        title="Réinitialiser au début de match (0-0, 0 pt)"
+                      >
+                        0-0
+                      </button>
                     </div>
+
                     <div className="p-2 space-y-2 text-xs">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="font-semibold text-slate-700">Score :</span>
-                        <div className="flex items-center gap-1 font-bold">
-                          <input
-                            type="text"
-                            value={period.team2.scoreMatch}
-                            onChange={(e) => handleScoreTeamChange('team2', e.target.value, period.team2.scoreOpponent)}
-                            placeholder="0"
-                            className="w-8 text-center font-bold bg-slate-100 border border-slate-300 rounded py-0.5"
-                          />
-                          <span>à</span>
-                          <input
-                            type="text"
-                            value={period.team2.scoreOpponent}
-                            onChange={(e) => handleScoreTeamChange('team2', period.team2.scoreMatch, e.target.value)}
-                            placeholder="0"
-                            className="w-8 text-center font-bold bg-slate-100 border border-slate-300 rounded py-0.5"
-                          />
+                      {/* Score Input Row with Goal Pulsation & Stepper */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-semibold text-slate-700 text-[11px]">Score :</span>
+                          <div className="flex items-center gap-1 font-bold">
+                            {/* Footeco Team 2 Score Input with Pulsation */}
+                            <div className="relative">
+                              <motion.input
+                                type="text"
+                                value={period.team2.scoreMatch}
+                                animate={
+                                  goalCelebration?.team === 'team2'
+                                    ? {
+                                        scale: [1, 1.25, 1],
+                                        backgroundColor: ['#ecfdf5', '#a7f3d0', '#ffffff'],
+                                        borderColor: ['#10b981', '#059669', '#cbd5e1'],
+                                      }
+                                    : {}
+                                }
+                                transition={{ duration: 0.8 }}
+                                onChange={(e) => handleScoreTeamChange('team2', e.target.value, period.team2.scoreOpponent)}
+                                placeholder="0"
+                                className={`w-8 text-center font-black rounded py-0.5 transition-all text-xs ${
+                                  goalCelebration?.team === 'team2'
+                                    ? 'bg-emerald-100 text-emerald-800 border-2 border-emerald-500 ring-2 ring-emerald-300'
+                                    : 'bg-slate-100 border border-slate-300 text-slate-900'
+                                }`}
+                                title="Buts marqués par l'équipe Footeco 2"
+                              />
+                            </div>
+                            <span className="text-slate-400 font-bold text-xs">à</span>
+                            <input
+                              type="text"
+                              value={period.team2.scoreOpponent}
+                              onChange={(e) => handleScoreTeamChange('team2', period.team2.scoreMatch, e.target.value)}
+                              placeholder="0"
+                              className="w-8 text-center font-bold bg-slate-100 border border-slate-300 rounded py-0.5 text-xs text-slate-900"
+                              title="Buts marqués par l'adversaire"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Tactile Quick Stepper Buttons (+1 Footeco / -1) */}
+                        <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-100">
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleIncrementFootecoScore('team2', 1)}
+                              className="px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] flex items-center gap-0.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                              title="Ajouter 1 but Footeco (+1) avec animation de célébration"
+                            >
+                              <span>+1 But</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleIncrementFootecoScore('team2', -1)}
+                              disabled={(parseInt(period.team2.scoreMatch, 10) || 0) <= 0}
+                              className="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 disabled:opacity-30 disabled:pointer-events-none font-bold text-[10px] flex items-center justify-center transition-colors cursor-pointer"
+                              title="Retirer un but (-1)"
+                            >
+                              -
+                            </button>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => handleIncrementOpponentScore('team2', 1)}
+                            className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-[9px] transition-colors cursor-pointer"
+                            title="Ajouter 1 but adversaire"
+                          >
+                            +1 Adv
+                          </button>
                         </div>
                       </div>
 
@@ -612,7 +891,7 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
                           type="text"
                           value={period.team2.points}
                           onChange={(e) => handleUpdateTeam2({ points: e.target.value })}
-                          placeholder="3"
+                          placeholder="0"
                           className="w-10 text-center font-bold bg-red-50 border border-red-300 rounded py-0.5 text-red-900"
                         />
                       </div>
@@ -638,7 +917,7 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
                         ))}
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
 
                 </td>
 

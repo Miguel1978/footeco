@@ -4,6 +4,7 @@ import { calculatePlayerStats, PlayerStats, loadMatchSchedule, saveMatchSchedule
 import { exportMatchToExcel } from '../utils/excelExport';
 import { exportMatchToPdf } from '../utils/pdfExport';
 import { ScoreEvolutionChart } from './ScoreEvolutionChart';
+import { PlayingTimeRotationChart } from './PlayingTimeRotationChart';
 import { 
   BarChart3, 
   X, 
@@ -585,6 +586,9 @@ export const StatsDrawer: React.FC<StatsDrawerProps> = ({
           {/* TAB 2: PLAYING TIME & FOOTECO FAIRNESS */}
           {activeTab === 'playing_time' && (
             <div className="space-y-5">
+              {/* Rotation Equity & Playing Time Chart */}
+              <PlayingTimeRotationChart matchData={matchData} />
+
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 flex items-start gap-3">
                 <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                 <div className="text-xs text-emerald-900 leading-relaxed">

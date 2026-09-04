@@ -31,7 +31,8 @@ import {
   Search,
   RotateCcw
 } from 'lucide-react';
-import html2pdf from 'html2pdf.js';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas-pro';
 import { TrainingSession, TrainingExercisePart, TrainingDrawing } from '../types';
 import { 
   loadTrainingSessions, 
@@ -273,17 +274,51 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
         return;
       }
 
-      const opt = {
-        margin: [5, 5, 5, 5] as [number, number, number, number],
-        filename: `Seance_FootEco_${currentSession.team.replace(/\s+/g, '_')}_${currentSession.date}.pdf`,
-        image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
-      };
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
 
-      await (html2pdf as any)().set(opt).from(element).save();
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+      const margin = 5;
+      const usableWidth = pdfWidth - margin * 2;
+      const usableHeight = pdfHeight - margin * 2;
+
+      const imgProps = pdf.getImageProperties(imgData);
+      const renderedHeight = (imgProps.height * usableWidth) / imgProps.width;
+
+      if (renderedHeight <= usableHeight) {
+        pdf.addImage(imgData, 'JPEG', margin, margin, usableWidth, renderedHeight, undefined, 'FAST');
+      } else {
+        let heightLeft = renderedHeight;
+        let position = margin;
+        let page = 1;
+
+        while (heightLeft > 0) {
+          pdf.addImage(imgData, 'JPEG', margin, position, usableWidth, renderedHeight, undefined, 'FAST');
+          heightLeft -= usableHeight;
+          if (heightLeft > 0) {
+            pdf.addPage('a4', 'portrait');
+            page++;
+            position = margin - (page - 1) * usableHeight;
+          }
+        }
+      }
+
+      const filename = `Seance_FootEco_${currentSession.team.replace(/\s+/g, '_')}_${currentSession.date}.pdf`;
+      pdf.save(filename);
     } catch (err) {
-      console.error(err);
+      console.error('PDF export error:', err);
       window.print();
     } finally {
       setIsExportingPdf(false);

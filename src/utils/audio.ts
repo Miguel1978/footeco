@@ -89,3 +89,33 @@ export function playBeep(freq = 880, duration = 0.15) {
     console.error('Audio beep error:', err);
   }
 }
+
+// Rewarding goal celebration sound chime
+export function playGoalCelebrationSound() {
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6 (major chord chime)
+
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const noteStart = now + idx * 0.08;
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, noteStart);
+
+      gain.gain.setValueAtTime(0, noteStart);
+      gain.gain.linearRampToValueAtTime(0.28, noteStart + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, noteStart + 0.35);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(noteStart);
+      osc.stop(noteStart + 0.35);
+    });
+  } catch (err) {
+    console.error('Goal chime error:', err);
+  }
+}
