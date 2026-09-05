@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { generateTailoredSvgFromExercise } from "./src/utils/pitchDiagrams";
 
 dotenv.config();
 
@@ -25,12 +26,70 @@ function getAIClient(): GoogleGenAI | null {
   return aiClient;
 }
 
+// Robust JSON extractor that handles markdown blocks, trailing commentaries, unescaped chars, and trailing commas
+function safeExtractAndParseJson(text: string | null | undefined): any {
+  if (!text || typeof text !== "string") return null;
+
+  let s = text.trim();
+
+  // Try direct parse first
+  try {
+    return JSON.parse(s);
+  } catch (_) {}
+
+  // 1. If wrapped in markdown code fence ```json ... ``` or ``` ... ```
+  const codeBlockMatches = [...s.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g)];
+  for (const match of codeBlockMatches) {
+    if (match[1] && match[1].includes("{")) {
+      const candidate = match[1].trim();
+      try {
+        return JSON.parse(candidate);
+      } catch (_) {
+        // Continue to brace isolation below
+      }
+    }
+  }
+
+  // 2. Extract from the first '{' to the last '}' (strips any trailing text/explanation)
+  const firstBrace = s.indexOf("{");
+  const lastBrace = s.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = s.slice(firstBrace, lastBrace + 1).trim();
+    try {
+      return JSON.parse(candidate);
+    } catch (_) {
+      // 2a. Fix common LLM trailing commas before closing braces or brackets
+      try {
+        const withoutTrailingCommas = candidate
+          .replace(/,\s*([}\]])/g, "$1")
+          .replace(/[\u0000-\u001F\u007F-\u009F]/g, (c) =>
+            c === "\n" || c === "\r" || c === "\t" ? c : ""
+          );
+        return JSON.parse(withoutTrailingCommas);
+      } catch (_) {
+        // 2b. Fix unescaped newlines inside string values
+        try {
+          const sanitizedStrings = candidate
+            .replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (match) =>
+              match.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t")
+            )
+            .replace(/,\s*([}\]])/g, "$1");
+          return JSON.parse(sanitizedStrings);
+        } catch (_) {}
+      }
+    }
+  }
+
+  return null;
+}
+
 // Resilient Gemini caller with supported models from @google/genai and deterministic fallback
 async function generateContentWithFallback(options: {
   contents: string;
   systemInstruction?: string;
   temperature?: number;
   responseMimeType?: string;
+  maxOutputTokens?: number;
 }): Promise<string | null> {
   const ai = getAIClient();
   if (!ai) {
@@ -39,7 +98,8 @@ async function generateContentWithFallback(options: {
 
   // Official supported models in order of capability & speed
   const modelsToTry = [
-    "gemini-3.7-flash",
+    "gemini-3.8-flash",
+    "gemini-2.5-flash",
     "gemini-3.1-flash-lite",
     "gemini-flash-latest",
   ];
@@ -54,6 +114,7 @@ async function generateContentWithFallback(options: {
             systemInstruction: options.systemInstruction,
             temperature: options.temperature ?? 0.7,
             responseMimeType: options.responseMimeType,
+            maxOutputTokens: options.maxOutputTokens ?? 8192,
           },
         });
 
@@ -211,12 +272,13 @@ Tu DOIS répondre EXCLUSIVEMENT sous la forme d'un objet JSON strict avec la str
         });
 
         if (text) {
-          // Strip any potential markdown wrapper if present
-          const cleanText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-          generatedJson = JSON.parse(cleanText);
+          generatedJson = safeExtractAndParseJson(text);
+          if (!generatedJson) {
+            console.warn("AI generation parser issue: could not parse JSON, falling back to template.");
+          }
         }
       } catch (aiErr) {
-        console.warn("AI generation parser issue, using fallback structure:", aiErr);
+        console.warn("AI generation error, using fallback structure:", aiErr);
       }
 
       if (!generatedJson) {
@@ -279,6 +341,61 @@ Tu DOIS répondre EXCLUSIVEMENT sous la forme d'un objet JSON strict avec la str
         };
       }
 
+      // Automatically generate tactical vector diagrams tailored specifically to each exercise description!
+      try {
+        const initDesc = generatedJson.initialPart?.description || "";
+        const formDesc = generatedJson.playedForms?.description || "";
+        const gameDesc = generatedJson.finalGame?.description || "";
+
+        generatedJson.initialPart = generatedJson.initialPart || {};
+        generatedJson.initialPart.drawing1Svg = generateTailoredSvgFromExercise({
+          title: generatedJson.initialPart.drawing1Caption || "Atelier TE/KO 1",
+          description: initDesc,
+          slotName: "Dessin 1",
+          partType: "initialPart",
+          coach: generatedJson.initialPart.drawing1Coach || (coach ? coach.split(" ")[0] : "SEB"),
+          theme: generatedJson.title,
+        });
+        generatedJson.initialPart.drawing2Svg = generateTailoredSvgFromExercise({
+          title: generatedJson.initialPart.drawing2Caption || "Atelier TE/KO 2",
+          description: initDesc,
+          slotName: "Dessin 2",
+          partType: "initialPart",
+          coach: generatedJson.initialPart.drawing2Coach || (assistantCoach ? assistantCoach.split(" ")[0] : "Miguel"),
+          theme: generatedJson.title,
+        });
+
+        generatedJson.playedForms = generatedJson.playedForms || {};
+        generatedJson.playedForms.drawing1Svg = generateTailoredSvgFromExercise({
+          title: generatedJson.playedForms.drawing1Caption || "Forme jouée 1",
+          description: formDesc,
+          slotName: "Dessin 1",
+          partType: "playedForms",
+          coach: generatedJson.playedForms.drawing1Coach || (coach ? coach.split(" ")[0] : "SEB"),
+          theme: generatedJson.title,
+        });
+        generatedJson.playedForms.drawing2Svg = generateTailoredSvgFromExercise({
+          title: generatedJson.playedForms.drawing2Caption || "Forme jouée 2",
+          description: formDesc,
+          slotName: "Dessin 2",
+          partType: "playedForms",
+          coach: generatedJson.playedForms.drawing2Coach || (assistantCoach ? assistantCoach.split(" ")[0] : "Miguel"),
+          theme: generatedJson.title,
+        });
+
+        generatedJson.finalGame = generatedJson.finalGame || {};
+        generatedJson.finalGame.drawing1Svg = generateTailoredSvgFromExercise({
+          title: generatedJson.finalGame.drawing1Caption || "Match final 6 contre 6",
+          description: gameDesc,
+          slotName: "Dessin 1",
+          partType: "finalGame",
+          coach: "",
+          theme: generatedJson.title,
+        });
+      } catch (diagramErr) {
+        console.warn("Diagram generation note:", diagramErr);
+      }
+
       res.json({ success: true, session: generatedJson });
     } catch (err: any) {
       console.error("Error in generate-training-session:", err);
@@ -329,11 +446,13 @@ Réponds UNIQUEMENT avec un JSON strict :
           responseMimeType: "application/json",
         });
         if (text) {
-          const cleanText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-          generated = JSON.parse(cleanText);
+          generated = safeExtractAndParseJson(text);
+          if (!generated) {
+            console.warn("Exercise part AI could not parse JSON, activating fallback.");
+          }
         }
       } catch (err) {
-        console.warn("Exercise part AI fallback activated:", err);
+        console.warn("Exercise part AI error:", err);
       }
 
       if (!generated) {
@@ -351,9 +470,109 @@ Réponds UNIQUEMENT avec un JSON strict :
         };
       }
 
+      // Generate tailored diagrams according to the newly created exercise description!
+      try {
+        const partDesc = generated.description || "";
+        generated.drawing1Svg = generateTailoredSvgFromExercise({
+          title: generated.drawing1Caption || generated.title || "Atelier 1",
+          description: partDesc,
+          slotName: "Dessin 1",
+          partType,
+          coach: generated.drawing1Coach || coach,
+          theme: themeDescription,
+        });
+        generated.drawing2Svg = generateTailoredSvgFromExercise({
+          title: generated.drawing2Caption || generated.title || "Atelier 2",
+          description: partDesc,
+          slotName: "Dessin 2",
+          partType,
+          coach: generated.drawing2Coach || assistantCoach,
+          theme: themeDescription,
+        });
+      } catch (dErr) {
+        console.warn("Part diagram generation error:", dErr);
+      }
+
       return res.json({ success: true, exercisePart: generated });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API 3: Generate Custom Tactical Drill Diagram via AI (or tailored procedural generator)
+  app.post("/api/ai/generate-drill-diagram", async (req, res) => {
+    try {
+      const {
+        exerciseTitle = "Atelier FootEco",
+        description = "",
+        slotName = "Dessin 1",
+        partType = "initialPart",
+        coach = "Coach",
+        category = "FE12",
+        theme = "",
+        customPrompt = "",
+      } = req.body;
+
+      let generatedSvg: string | null = null;
+
+      if (process.env.GEMINI_API_KEY) {
+        const prompt = `Tu es l'expert tactique et formateur officiel FootEco ASF (${category}).
+Génère un schéma tactique vectoriel SVG complet (viewBox 0 0 400 240) représentant précisément l'atelier d'entraînement de football suivant :
+- Titre : ${exerciseTitle} (${slotName})
+- Type d'atelier : ${partType}
+- Description détaillée de l'atelier : "${description}"
+- Thème d'entraînement : ${theme}
+- Coach responsable : ${coach}
+- Demande spécifique : ${customPrompt || "Schéma clair avec joueurs, cibles et flèches de trajectoire"}
+
+CONSIGNES STRICTES POUR LE CODE SVG :
+1. Renvoie UNIQUEMENT le code SVG débutant par <svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded"> et finissant par </svg>.
+2. Pas de texte avant ou après, pas de balises markdown de type \`\`\`xml ou \`\`\`svg.
+3. Inclus des définitions graphiques : dégradé herbe verte (grassGrad), ciel (skyGrad), lignes blanches, marqueurs de flèches (arrowPass, arrowYellow).
+4. Représente fidèlement les consignes :
+   - Zone de jeu verte ou couloir délimité.
+   - Joueurs attaquants bleus (#2563eb avec bordure blanche), défenseurs rouges (#ef4444), jokers jaunes (#f59e0b), gardien vert (#10b981).
+   - Matériel d'entraînement : cônes/coupelles (orange/jaune), piquets de slalom verticaux si motricité, mini-buts ou grand but.
+   - Ballons (blancs avec coutures noires).
+   - Flèches de passes (pointillés blancs) et flèches de courses (lignes continues jaunes ou dorées).
+   - Petit badge du coach en bas à gauche ("${coach}").
+   - Titre de l'exercice en filigrane propre.
+`;
+
+        try {
+          const aiResponse = await generateContentWithFallback({
+            contents: prompt,
+            systemInstruction: "Tu es un générateur de schémas tactiques vectoriels SVG pour le football suisse des enfants FootEco ASF. Tu renvoies exclusivement du code SVG valide sans texte superflu.",
+            temperature: 0.3,
+            maxOutputTokens: 8192,
+          });
+
+          if (aiResponse) {
+            const match = aiResponse.match(/<svg[\s\S]*?<\/svg>/i);
+            if (match && match[0].includes("</svg>")) {
+              generatedSvg = match[0];
+            }
+          }
+        } catch (err) {
+          console.warn("AI drill diagram generation error, using tailored procedural generator:", err);
+        }
+      }
+
+      if (!generatedSvg) {
+        generatedSvg = generateTailoredSvgFromExercise({
+          title: exerciseTitle,
+          description: `${description} ${customPrompt}`,
+          slotName,
+          partType,
+          coach,
+          theme,
+        });
+      }
+
+      return res.json({ success: true, svg: generatedSvg });
+    } catch (err: any) {
+      console.error("Error in generate-drill-diagram:", err);
+      res.status(500).json({ error: err.message || "Erreur lors de la génération du schéma" });
     }
   });
 
@@ -380,11 +599,13 @@ Réponds UNIQUEMENT avec un JSON strict :
           responseMimeType: "application/json",
         });
         if (text) {
-          const cleanText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-          generated = JSON.parse(cleanText);
+          generated = safeExtractAndParseJson(text);
+          if (!generated) {
+            console.warn("Theme refine AI could not parse JSON, activating fallback.");
+          }
         }
       } catch (err) {
-        console.warn("Theme refine AI fallback activated:", err);
+        console.warn("Theme refine AI error:", err);
       }
 
       if (!generated) {

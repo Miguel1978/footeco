@@ -1,5 +1,5 @@
 import { TrainingSession, TrainingExercisePart } from '../types';
-import { getPresetSvg } from './pitchDiagrams';
+import { getPresetSvg, generateTailoredSvgFromExercise } from './pitchDiagrams';
 import { getSeasonFromDate } from './season';
 
 export type ASFThemeCategory = 'Technique' | 'Tactique' | 'Passe' | 'Dribble' | 'Tir / Finition' | 'Défense' | 'Transition';
@@ -253,6 +253,14 @@ export const ASF_THEMATIC_PRESETS: ASFThematicPreset[] = [
   },
 ];
 
+function formatStringOrArray(val: any, fallback = ''): string {
+  if (val === null || val === undefined) return fallback;
+  if (Array.isArray(val)) {
+    return val.map((item) => (typeof item === 'string' ? item : JSON.stringify(item))).join('\n');
+  }
+  return typeof val === 'string' ? val : String(val);
+}
+
 export async function generateFullSessionWithAI(params: {
   themeTitle: string;
   category?: string;
@@ -275,81 +283,124 @@ export async function generateFullSessionWithAI(params: {
   }
 
   const data = await response.json();
-  const raw = data.session;
+  const raw = data.session || {};
 
   const today = new Date().toISOString().split('T')[0];
   const season = params.season || getSeasonFromDate(today);
 
-  // Match presets and SVGs
-  const initSvg1 = getPresetSvg(raw.initialPart?.recommendedPreset1 || 'preset-init-1') || '';
-  const initSvg2 = getPresetSvg(raw.initialPart?.recommendedPreset2 || 'preset-init-2') || '';
-  const formSvg1 = getPresetSvg(raw.playedForms?.recommendedPreset1 || 'preset-form-1') || '';
-  const formSvg2 = getPresetSvg(raw.playedForms?.recommendedPreset2 || 'preset-form-2') || '';
-  const gameSvg = getPresetSvg(raw.finalGame?.recommendedPreset1 || 'preset-game-6v6') || '';
+  // Match tailored SVGs created specifically for this exercise content or fallback to presets
+  const initDesc = formatStringOrArray(raw.initialPart?.description);
+  const formDesc = formatStringOrArray(raw.playedForms?.description);
+  const gameDesc = formatStringOrArray(raw.finalGame?.description);
+
+  const initSvg1 = raw.initialPart?.drawing1Svg || generateTailoredSvgFromExercise({
+    title: raw.initialPart?.drawing1Caption || 'Atelier TE/KO 1',
+    description: initDesc,
+    slotName: 'Dessin 1',
+    partType: 'initialPart',
+    coach: raw.initialPart?.drawing1Coach || params.coach?.split(' ')[0] || 'SEB',
+    theme: raw.title || params.themeTitle,
+  }) || getPresetSvg(raw.initialPart?.recommendedPreset1 || 'preset-init-1') || '';
+
+  const initSvg2 = raw.initialPart?.drawing2Svg || generateTailoredSvgFromExercise({
+    title: raw.initialPart?.drawing2Caption || 'Atelier TE/KO 2',
+    description: initDesc,
+    slotName: 'Dessin 2',
+    partType: 'initialPart',
+    coach: raw.initialPart?.drawing2Coach || params.assistantCoach?.split(' ')[0] || 'Miguel',
+    theme: raw.title || params.themeTitle,
+  }) || getPresetSvg(raw.initialPart?.recommendedPreset2 || 'preset-init-2') || '';
+
+  const formSvg1 = raw.playedForms?.drawing1Svg || generateTailoredSvgFromExercise({
+    title: raw.playedForms?.drawing1Caption || 'Forme jouée 1',
+    description: formDesc,
+    slotName: 'Dessin 1',
+    partType: 'playedForms',
+    coach: raw.playedForms?.drawing1Coach || params.coach?.split(' ')[0] || 'SEB',
+    theme: raw.title || params.themeTitle,
+  }) || getPresetSvg(raw.playedForms?.recommendedPreset1 || 'preset-form-1') || '';
+
+  const formSvg2 = raw.playedForms?.drawing2Svg || generateTailoredSvgFromExercise({
+    title: raw.playedForms?.drawing2Caption || 'Forme jouée 2',
+    description: formDesc,
+    slotName: 'Dessin 2',
+    partType: 'playedForms',
+    coach: raw.playedForms?.drawing2Coach || params.assistantCoach?.split(' ')[0] || 'Miguel',
+    theme: raw.title || params.themeTitle,
+  }) || getPresetSvg(raw.playedForms?.recommendedPreset2 || 'preset-form-2') || '';
+
+  const gameSvg = raw.finalGame?.drawing1Svg || generateTailoredSvgFromExercise({
+    title: raw.finalGame?.drawing1Caption || 'Match final 6 contre 6 (FE12 FootEco)',
+    description: gameDesc,
+    slotName: 'Dessin 1',
+    partType: 'finalGame',
+    coach: '',
+    theme: raw.title || params.themeTitle,
+  }) || getPresetSvg(raw.finalGame?.recommendedPreset1 || 'preset-game-6v6') || '';
 
   const finalSession: TrainingSession = {
     id: `session-ai-${Date.now()}`,
-    title: raw.title || `Séance FootEco ${params.category || 'FE12'} - ${params.themeTitle}`,
-    team: raw.team || params.category || 'FE12 Bas-Valais',
+    title: formatStringOrArray(raw.title, `Séance FootEco ${params.category || 'FE12'} - ${params.themeTitle}`),
+    team: formatStringOrArray(raw.team, params.category || 'FE12 Bas-Valais'),
     date: today,
     season: season,
     coach: params.coach || 'Sébastien M.',
     assistantCoach: params.assistantCoach || 'Miguel R.',
     themeTE: {
-      description: raw.themeTE?.description || '',
-      coachingAccents: raw.themeTE?.coachingAccents || '',
+      description: formatStringOrArray(raw.themeTE?.description),
+      coachingAccents: formatStringOrArray(raw.themeTE?.coachingAccents),
     },
     themeTA: {
-      description: raw.themeTA?.description || '',
-      coachingAccents: raw.themeTA?.coachingAccents || '',
+      description: formatStringOrArray(raw.themeTA?.description),
+      coachingAccents: formatStringOrArray(raw.themeTA?.coachingAccents),
       defOrOff: raw.themeTA?.defOrOff || (params.phase || 'DEF & OFF'),
-      antagonism: raw.themeTA?.antagonism || '',
+      antagonism: formatStringOrArray(raw.themeTA?.antagonism),
     },
     themePE: {
-      description: raw.themePE?.description || '',
-      coachingAccents: raw.themePE?.coachingAccents || '',
+      description: formatStringOrArray(raw.themePE?.description),
+      coachingAccents: formatStringOrArray(raw.themePE?.coachingAccents),
     },
     initialPart: {
-      title: raw.initialPart?.title || 'Partie initiale - Focus TE/KO',
-      focus: raw.initialPart?.focus || 'Focus TE/KO',
-      duration: raw.initialPart?.duration || '2X 15 min (Total 30 min)',
-      description: raw.initialPart?.description || '',
+      title: formatStringOrArray(raw.initialPart?.title, 'Partie initiale - Focus TE/KO'),
+      focus: formatStringOrArray(raw.initialPart?.focus, 'Focus TE/KO'),
+      duration: formatStringOrArray(raw.initialPart?.duration, '2X 15 min (Total 30 min)'),
+      description: formatStringOrArray(raw.initialPart?.description),
       drawing1: {
         image: initSvg1,
         coach: raw.initialPart?.drawing1Coach || params.coach?.split(' ')[0] || 'SEB',
-        caption: raw.initialPart?.drawing1Caption || 'Atelier TE/KO 1',
+        caption: formatStringOrArray(raw.initialPart?.drawing1Caption, 'Atelier TE/KO 1'),
       },
       drawing2: {
         image: initSvg2,
         coach: raw.initialPart?.drawing2Coach || params.assistantCoach?.split(' ')[0] || 'Miguel',
-        caption: raw.initialPart?.drawing2Caption || 'Atelier TE/KO 2',
+        caption: formatStringOrArray(raw.initialPart?.drawing2Caption, 'Atelier TE/KO 2'),
       },
     },
     playedForms: {
-      title: raw.playedForms?.title || 'Formes jouées - Focus TA',
-      focus: raw.playedForms?.focus || 'Focus TA',
-      duration: raw.playedForms?.duration || '2X 15 min (Total 30 min)',
-      description: raw.playedForms?.description || '',
+      title: formatStringOrArray(raw.playedForms?.title, 'Formes jouées - Focus TA'),
+      focus: formatStringOrArray(raw.playedForms?.focus, 'Focus TA'),
+      duration: formatStringOrArray(raw.playedForms?.duration, '2X 15 min (Total 30 min)'),
+      description: formatStringOrArray(raw.playedForms?.description),
       drawing1: {
         image: formSvg1,
         coach: raw.playedForms?.drawing1Coach || params.coach?.split(' ')[0] || 'SEB',
-        caption: raw.playedForms?.drawing1Caption || 'Forme jouée 1',
+        caption: formatStringOrArray(raw.playedForms?.drawing1Caption, 'Forme jouée 1'),
       },
       drawing2: {
         image: formSvg2,
         coach: raw.playedForms?.drawing2Coach || params.assistantCoach?.split(' ')[0] || 'Miguel',
-        caption: raw.playedForms?.drawing2Caption || 'Forme jouée 2',
+        caption: formatStringOrArray(raw.playedForms?.drawing2Caption, 'Forme jouée 2'),
       },
     },
     finalGame: {
-      title: raw.finalGame?.title || 'Jeu final - Focus TE/TA',
-      focus: raw.finalGame?.focus || 'Focus TE/TA',
-      duration: raw.finalGame?.duration || '30 min',
-      description: raw.finalGame?.description || '',
+      title: formatStringOrArray(raw.finalGame?.title, 'Jeu final - Focus TE/TA'),
+      focus: formatStringOrArray(raw.finalGame?.focus, 'Focus TE/TA'),
+      duration: formatStringOrArray(raw.finalGame?.duration, '30 min'),
+      description: formatStringOrArray(raw.finalGame?.description),
       drawing1: {
         image: gameSvg,
         coach: '',
-        caption: raw.finalGame?.drawing1Caption || 'Match final 6 contre 6 (FE12 FootEco)',
+        caption: formatStringOrArray(raw.finalGame?.drawing1Caption, 'Match final 6 contre 6 (FE12 FootEco)'),
       },
       drawing2: {
         image: '',
@@ -357,8 +408,8 @@ export async function generateFullSessionWithAI(params: {
         caption: '',
       },
     },
-    remarksAndIndividualization: raw.remarksAndIndividualization || 'Différenciation espace/temps et travail par poste.',
-    bilan: raw.bilan || 'Évaluation globale de l\'engagement et des comportements observés.',
+    remarksAndIndividualization: formatStringOrArray(raw.remarksAndIndividualization, 'Différenciation espace/temps et travail par poste.'),
+    bilan: formatStringOrArray(raw.bilan, 'Évaluation globale de l\'engagement et des comportements observés.'),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -386,27 +437,83 @@ export async function generateExercisePartWithAI(params: {
   }
 
   const data = await response.json();
-  const raw = data.exercisePart;
+  const raw = data.exercisePart || {};
 
-  const svg1 = getPresetSvg(raw.recommendedPreset1) || '';
-  const svg2 = getPresetSvg(raw.recommendedPreset2) || '';
+  const partDesc = formatStringOrArray(raw.description);
+
+  const svg1 = raw.drawing1Svg || generateTailoredSvgFromExercise({
+    title: raw.drawing1Caption || raw.title || 'Atelier 1',
+    description: partDesc,
+    slotName: 'Dessin 1',
+    partType: params.partType,
+    coach: raw.drawing1Coach || params.coach,
+    theme: params.themeDescription,
+  }) || getPresetSvg(raw.recommendedPreset1) || '';
+
+  const svg2 = raw.drawing2Svg || generateTailoredSvgFromExercise({
+    title: raw.drawing2Caption || raw.title || 'Atelier 2',
+    description: partDesc,
+    slotName: 'Dessin 2',
+    partType: params.partType,
+    coach: raw.drawing2Coach || params.assistantCoach,
+    theme: params.themeDescription,
+  }) || getPresetSvg(raw.recommendedPreset2) || '';
 
   return {
-    title: raw.title,
-    focus: raw.focus,
-    duration: raw.duration,
-    description: raw.description,
+    title: raw.title || '',
+    focus: raw.focus || '',
+    duration: raw.duration || '',
+    description: partDesc,
     drawing1: {
       image: svg1,
-      coach: raw.drawing1Coach,
-      caption: raw.drawing1Caption,
+      coach: raw.drawing1Coach || '',
+      caption: raw.drawing1Caption || '',
     },
     drawing2: {
       image: svg2,
-      coach: raw.drawing2Coach,
-      caption: raw.drawing2Caption,
+      coach: raw.drawing2Coach || '',
+      caption: raw.drawing2Caption || '',
     },
   };
+}
+
+// Generate an individual tactical drill diagram via AI based on the full exercise details
+export async function generateDrillDiagramWithAI(params: {
+  exerciseTitle: string;
+  description: string;
+  slotName?: 'Dessin 1' | 'Dessin 2' | string;
+  partType?: string;
+  coach?: string;
+  category?: string;
+  theme?: string;
+  customPrompt?: string;
+}): Promise<string> {
+  try {
+    const response = await fetch('/api/ai/generate-drill-diagram', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.svg && typeof data.svg === 'string' && data.svg.includes('<svg')) {
+        return data.svg;
+      }
+    }
+  } catch (err) {
+    console.warn('AI drill diagram API error, using tailored fallback:', err);
+  }
+
+  // Resilient tailored SVG builder
+  return generateTailoredSvgFromExercise({
+    title: params.exerciseTitle,
+    description: `${params.description} ${params.customPrompt || ''}`,
+    slotName: params.slotName,
+    partType: params.partType,
+    coach: params.coach,
+    theme: params.theme,
+  });
 }
 
 export async function refineThemeWithAI(params: {
@@ -425,5 +532,9 @@ export async function refineThemeWithAI(params: {
   }
 
   const data = await response.json();
-  return data.data;
+  const d = data?.data || {};
+  return {
+    description: formatStringOrArray(d.description, params.currentText),
+    coachingAccents: formatStringOrArray(d.coachingAccents),
+  };
 }

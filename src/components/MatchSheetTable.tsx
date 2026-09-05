@@ -20,12 +20,29 @@ import {
   ChevronRight,
   Shield,
   Zap,
-  Info
+  Info,
+  ArrowUpDown,
+  ArrowUpRight,
+  ArrowDownToLine,
+  X,
+  Repeat
 } from 'lucide-react';
 import { RatingInput } from './RatingInput';
 import { PlayerAvatar } from './PlayerAvatar';
 import { CoachAutocompleteInput } from './CoachAutocompleteInput';
-import { playGoalCelebrationSound } from '../utils/audio';
+import { playGoalCelebrationSound, playSubstitutionSound } from '../utils/audio';
+
+export interface DragPlayerData {
+  id: string;
+  name: string;
+  position?: Position;
+  source: 'roster' | 'starter' | 'sub';
+  sourceTeam?: 'team1' | 'team2';
+  sourceIndex?: number;
+  sourceSlotId?: string;
+  sourceRating?: number;
+  sourceNote?: string;
+}
 
 interface MatchSheetTableProps {
   period: PeriodMatch;
@@ -53,6 +70,50 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
   const [showRosterPanel, setShowRosterPanel] = useState<boolean>(true);
   const [rosterSearch, setRosterSearch] = useState<string>('');
   const [draggedPlayer, setDraggedPlayer] = useState<Player | null>(null);
+  const [activeDragItem, setActiveDragItem] = useState<DragPlayerData | null>(null);
+  const [dropOverBench, setDropOverBench] = useState<'team1' | 'team2' | null>(null);
+
+  // Real-time substitution feedback toast state
+  const [recentSubstitution, setRecentSubstitution] = useState<{
+    playerIn: string;
+    playerOut: string;
+    team: 'team1' | 'team2';
+    type: 'sub' | 'swap' | 'bench' | 'in';
+    key: number;
+  } | null>(null);
+
+  // Highlight recently substituted slots for visual confirmation
+  const [recentlyChangedSlots, setRecentlyChangedSlots] = useState<{
+    team: 'team1' | 'team2';
+    type: 'starter' | 'sub';
+    index: number;
+  }[]>([]);
+
+  const showSubstitutionFeedback = (params: {
+    playerIn: string;
+    playerOut: string;
+    team: 'team1' | 'team2';
+    type: 'sub' | 'swap' | 'bench' | 'in';
+  }) => {
+    setRecentSubstitution({
+      ...params,
+      key: Date.now(),
+    });
+    setTimeout(() => {
+      setRecentSubstitution((curr) => (curr?.key === params.playerIn ? null : curr));
+    }, 5500);
+  };
+
+  const highlightSlots = (slots: { team: 'team1' | 'team2'; type: 'starter' | 'sub'; index: number }[]) => {
+    setRecentlyChangedSlots(slots);
+    setTimeout(() => {
+      setRecentlyChangedSlots([]);
+    }, 2800);
+  };
+
+  const isSlotRecentlyChanged = (team: 'team1' | 'team2', type: 'starter' | 'sub', index: number) => {
+    return recentlyChangedSlots.some(s => s.team === team && s.type === type && s.index === index);
+  };
 
   const handleUpdateTeam1 = (updates: Partial<typeof period.team1>) => {
     onUpdatePeriod({
@@ -143,38 +204,296 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
     }
   };
 
-  // Drag & Drop Handler for assigning a player to a specific slot
-  const handleDropPlayerOnSlot = (
-    team: 'team1' | 'team2', 
-    type: 'starter' | 'sub', 
-    index: number, 
-    playerData: { id: string; name: string; position?: Position }
-  ) => {
-    const updates: Partial<PlayerSlot> = {
-      playerId: playerData.id,
-      playerName: playerData.name,
+  // Quick tactile substitution (Starter <-> Sub) via touch menu
+  const handleQuickSubstitute = (team: 'team1' | 'team2', starterIndex: number, subIndex: number) => {
+    const teamStarters = [...(team === 'team1' ? period.team1.titulaires : period.team2.titulaires)];
+    const teamSubs = [...(team === 'team1' ? period.team1.remplacants : period.team2.remplacants)];
+
+    const starter = teamStarters[starterIndex];
+    const sub = teamSubs[subIndex];
+    if (!starter || !sub) return;
+
+    const starterName = starter.playerName;
+    const starterId = starter.playerId;
+    const subName = sub.playerName;
+    const subId = sub.playerId;
+
+    // Swap players
+    teamStarters[starterIndex] = {
+      ...starter,
+      playerName: subName,
+      playerId: subId,
     };
-    if (type === 'starter') {
-      handleUpdateStarter(team, index, updates);
+
+    teamSubs[subIndex] = {
+      ...sub,
+      playerName: starterName,
+      playerId: starterId,
+    };
+
+    if (team === 'team1') {
+      onUpdatePeriod({
+        ...period,
+        team1: { ...period.team1, titulaires: teamStarters, remplacants: teamSubs },
+      });
     } else {
-      handleUpdateSub(team, index, updates);
+      onUpdatePeriod({
+        ...period,
+        team2: { ...period.team2, titulaires: teamStarters, remplacants: teamSubs },
+      });
+    }
+
+    playSubstitutionSound();
+    showSubstitutionFeedback({
+      playerIn: subName || 'Entrant',
+      playerOut: starterName || 'Sortant',
+      team,
+      type: 'sub',
+    });
+    highlightSlots([
+      { team, type: 'starter', index: starterIndex },
+      { team, type: 'sub', index: subIndex },
+    ]);
+  };
+
+  // Move a starter to the bench (leaves the starter position open)
+  const handleBenchStarter = (team: 'team1' | 'team2', starterIndex: number) => {
+    const teamStarters = [...(team === 'team1' ? period.team1.titulaires : period.team2.titulaires)];
+    const teamSubs = [...(team === 'team1' ? period.team1.remplacants : period.team2.remplacants)];
+    const starter = teamStarters[starterIndex];
+    if (!starter || !starter.playerName) return;
+
+    const playerName = starter.playerName;
+    const playerId = starter.playerId;
+
+    teamStarters[starterIndex] = {
+      ...starter,
+      playerName: '',
+      playerId: null,
+    };
+
+    const newSubSlot: PlayerSlot = {
+      id: `${team}-sub-${Date.now()}`,
+      playerId,
+      playerName,
+      position: starter.position || 'Milieu',
+      note: starter.note || '',
+      rating: starter.rating,
+      shootout: starter.shootout || '',
+    };
+    teamSubs.push(newSubSlot);
+
+    if (team === 'team1') {
+      onUpdatePeriod({
+        ...period,
+        team1: { ...period.team1, titulaires: teamStarters, remplacants: teamSubs },
+      });
+    } else {
+      onUpdatePeriod({
+        ...period,
+        team2: { ...period.team2, titulaires: teamStarters, remplacants: teamSubs },
+      });
+    }
+
+    playSubstitutionSound();
+    showSubstitutionFeedback({
+      playerIn: 'Banc',
+      playerOut: playerName,
+      team,
+      type: 'bench',
+    });
+    highlightSlots([
+      { team, type: 'starter', index: starterIndex },
+      { team, type: 'sub', index: teamSubs.length - 1 },
+    ]);
+  };
+
+  // Master Drag & Drop Handler for assigning, swapping, and substituting players
+  const handlePerformSubstitution = (
+    targetTeam: 'team1' | 'team2',
+    targetType: 'starter' | 'sub',
+    targetIndex: number,
+    data: DragPlayerData
+  ) => {
+    // 1. From Roster quick bar
+    if (data.source === 'roster') {
+      const updates: Partial<PlayerSlot> = {
+        playerId: data.id,
+        playerName: data.name,
+      };
+      if (targetType === 'starter') {
+        handleUpdateStarter(targetTeam, targetIndex, updates);
+      } else {
+        handleUpdateSub(targetTeam, targetIndex, updates);
+      }
+      playSubstitutionSound();
+      showSubstitutionFeedback({
+        playerIn: data.name,
+        playerOut: '',
+        team: targetTeam,
+        type: 'in',
+      });
+      highlightSlots([{ team: targetTeam, type: targetType, index: targetIndex }]);
+      return;
+    }
+
+    const sourceTeam = data.sourceTeam || targetTeam;
+    const sourceIndex = data.sourceIndex ?? 0;
+    const sourceType = data.source;
+
+    // Same slot drop
+    if (sourceTeam === targetTeam && sourceType === targetType && sourceIndex === targetIndex) {
+      return;
+    }
+
+    // Clone all 4 lists
+    const t1Starters = [...period.team1.titulaires];
+    const t1Subs = [...period.team1.remplacants];
+    const t2Starters = [...period.team2.titulaires];
+    const t2Subs = [...period.team2.remplacants];
+
+    const getSlot = (tm: 'team1' | 'team2', tp: 'starter' | 'sub', idx: number) => {
+      if (tm === 'team1') {
+        return tp === 'starter' ? t1Starters[idx] : t1Subs[idx];
+      } else {
+        return tp === 'starter' ? t2Starters[idx] : t2Subs[idx];
+      }
+    };
+
+    const setSlot = (tm: 'team1' | 'team2', tp: 'starter' | 'sub', idx: number, updated: PlayerSlot) => {
+      if (tm === 'team1') {
+        if (tp === 'starter') t1Starters[idx] = updated;
+        else t1Subs[idx] = updated;
+      } else {
+        if (tp === 'starter') t2Starters[idx] = updated;
+        else t2Subs[idx] = updated;
+      }
+    };
+
+    const sourceSlot = getSlot(sourceTeam, sourceType, sourceIndex);
+    const targetSlot = getSlot(targetTeam, targetType, targetIndex);
+
+    if (!sourceSlot || !targetSlot) return;
+
+    const sourcePlayerName = sourceSlot.playerName;
+    const sourcePlayerId = sourceSlot.playerId;
+    const targetPlayerName = targetSlot.playerName;
+    const targetPlayerId = targetSlot.playerId;
+
+    // Swap players between slots
+    setSlot(targetTeam, targetType, targetIndex, {
+      ...targetSlot,
+      playerName: sourcePlayerName,
+      playerId: sourcePlayerId,
+    });
+
+    setSlot(sourceTeam, sourceType, sourceIndex, {
+      ...sourceSlot,
+      playerName: targetPlayerName,
+      playerId: targetPlayerId,
+    });
+
+    onUpdatePeriod({
+      ...period,
+      team1: {
+        ...period.team1,
+        titulaires: t1Starters,
+        remplacants: t1Subs,
+      },
+      team2: {
+        ...period.team2,
+        titulaires: t2Starters,
+        remplacants: t2Subs,
+      },
+    });
+
+    playSubstitutionSound();
+
+    const isRealSub = (sourceType === 'sub' && targetType === 'starter') || (sourceType === 'starter' && targetType === 'sub');
+    const playerIn = sourceType === 'sub' ? sourcePlayerName : targetPlayerName;
+    const playerOut = sourceType === 'sub' ? targetPlayerName : sourcePlayerName;
+
+    showSubstitutionFeedback({
+      playerIn: playerIn || 'Entrant',
+      playerOut: playerOut || 'Sortant',
+      team: targetTeam,
+      type: isRealSub ? 'sub' : 'swap',
+    });
+
+    highlightSlots([
+      { team: targetTeam, type: targetType, index: targetIndex },
+      { team: sourceTeam, type: sourceType, index: sourceIndex },
+    ]);
+  };
+
+  // Move a dragged player directly to the bench (Remplaçants list)
+  const handleMovePlayerToBench = (targetTeam: 'team1' | 'team2', data: DragPlayerData) => {
+    if (data.source === 'roster') {
+      handleAddSub(targetTeam, {
+        id: data.id,
+        name: data.name,
+        isPresent: true,
+        defaultPosition: data.position,
+      });
+      playSubstitutionSound();
+      showSubstitutionFeedback({
+        playerIn: data.name,
+        playerOut: '',
+        team: targetTeam,
+        type: 'in',
+      });
+      return;
+    }
+
+    if (data.source === 'starter') {
+      const sourceTeam = data.sourceTeam || targetTeam;
+      const sourceIndex = data.sourceIndex ?? 0;
+      handleBenchStarter(sourceTeam, sourceIndex);
+      return;
+    }
+
+    if (data.source === 'sub' && data.sourceTeam && data.sourceTeam !== targetTeam) {
+      // Move between team benches
+      const sourceTeam = data.sourceTeam;
+      const sourceIndex = data.sourceIndex ?? 0;
+      const sourceSubs = [...(sourceTeam === 'team1' ? period.team1.remplacants : period.team2.remplacants)];
+      const targetSubs = [...(targetTeam === 'team1' ? period.team1.remplacants : period.team2.remplacants)];
+      const subSlot = sourceSubs[sourceIndex];
+      if (!subSlot) return;
+
+      sourceSubs.splice(sourceIndex, 1);
+      targetSubs.push({
+        ...subSlot,
+        id: `${targetTeam}-sub-${Date.now()}`,
+      });
+
+      onUpdatePeriod({
+        ...period,
+        team1: { ...period.team1, remplacants: sourceTeam === 'team1' ? sourceSubs : targetSubs },
+        team2: { ...period.team2, remplacants: sourceTeam === 'team2' ? sourceSubs : targetSubs },
+      });
+      playSubstitutionSound();
     }
   };
 
-  // Handle Drag Start from Roster or Slots
+  // Handle Drag Start from Roster
   const handleDragStartFromRoster = (e: React.DragEvent, player: Player) => {
     setDraggedPlayer(player);
-    e.dataTransfer.setData('application/json', JSON.stringify({
+    const dragData: DragPlayerData = {
       id: player.id,
       name: player.name,
       position: player.defaultPosition,
-      source: 'roster'
-    }));
+      source: 'roster',
+    };
+    setActiveDragItem(dragData);
+    e.dataTransfer.setData('application/json', JSON.stringify(dragData));
     e.dataTransfer.effectAllowed = 'copyMove';
   };
 
   const handleDragEnd = () => {
     setDraggedPlayer(null);
+    setActiveDragItem(null);
+    setDropOverBench(null);
   };
 
   // State to track visual goal celebration / pulsation animation
@@ -394,6 +713,93 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
           </div>
         )}
       </div>
+
+      {/* Real-time Substitution Notification Banner */}
+      <AnimatePresence>
+        {recentSubstitution && (
+          <motion.div
+            initial={{ opacity: 0, y: -10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.98 }}
+            className="p-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-700 to-emerald-800 text-white shadow-md flex items-center justify-between text-xs"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
+                <Repeat className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-black uppercase tracking-wider text-[10px] text-emerald-200">
+                    Changement en direct • {recentSubstitution.team === 'team1' ? (period.team1.teamName || 'Équipe 1') : (period.team2.teamName || 'Équipe 2')}
+                  </span>
+                  <span className="text-[10px] bg-white/20 text-white px-1.5 py-0.5 rounded font-mono font-bold">
+                    {period.title}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-semibold mt-0.5">
+                  {recentSubstitution.type === 'sub' && (
+                    <>
+                      <span className="text-emerald-100 flex items-center gap-1">
+                        <span className="text-emerald-300 font-extrabold">⬆️ Entrant :</span> {recentSubstitution.playerIn}
+                      </span>
+                      <span className="text-emerald-300/60">•</span>
+                      <span className="text-emerald-100 flex items-center gap-1">
+                        <span className="text-amber-300 font-extrabold">⬇️ Sortant :</span> {recentSubstitution.playerOut}
+                      </span>
+                    </>
+                  )}
+                  {recentSubstitution.type === 'swap' && (
+                    <span className="text-emerald-100 flex items-center gap-1">
+                      <span className="font-extrabold">⇄ Permutation :</span> {recentSubstitution.playerIn} ⇄ {recentSubstitution.playerOut}
+                    </span>
+                  )}
+                  {recentSubstitution.type === 'bench' && (
+                    <span className="text-emerald-100 flex items-center gap-1">
+                      <span className="font-extrabold">⬇️ Sortie sur le banc :</span> {recentSubstitution.playerOut}
+                    </span>
+                  )}
+                  {recentSubstitution.type === 'in' && (
+                    <span className="text-emerald-100 flex items-center gap-1">
+                      <span className="font-extrabold">⬆️ Entrée en jeu :</span> {recentSubstitution.playerIn}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setRecentSubstitution(null)}
+              className="p-1 hover:bg-white/20 rounded-lg text-white/80 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Active Drag Hint Bar */}
+      {activeDragItem && (
+        <div className="p-2.5 px-3.5 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-950 flex items-center justify-between shadow-2xs">
+          <span className="flex items-center gap-2 font-medium">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse" />
+            <span>
+              Déplacement en direct de <strong className="font-bold text-emerald-900">{activeDragItem.name}</strong> ({activeDragItem.source === 'sub' ? 'Remplaçant' : activeDragItem.source === 'starter' ? 'Titulaire' : 'Effectif'}) :
+            </span>
+            <span className="text-emerald-700 font-normal">
+              {activeDragItem.source === 'sub' 
+                ? 'Déposez sur un titulaire pour le remplacer (changement direct) 🔁' 
+                : activeDragItem.source === 'starter'
+                ? 'Déposez sur un remplaçant pour permuter, ou sur le banc pour le faire sortir ⬇️'
+                : 'Déposez sur un titulaire ou remplaçant pour l’assigner'}
+            </span>
+          </span>
+          <button
+            onClick={handleDragEnd}
+            className="text-[11px] text-emerald-700 hover:text-emerald-950 underline font-bold cursor-pointer"
+          >
+            Terminer
+          </button>
+        </div>
+      )}
 
       {/* Main Match Sheet Box */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-300 overflow-hidden">
@@ -928,9 +1334,16 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
                   team="team1"
                   playerNames={playerNames}
                   roster={roster}
+                  substitutes={period.team1.remplacants}
+                  activeDragItem={activeDragItem}
+                  isRecentlyChanged={isSlotRecentlyChanged('team1', 'starter', 0)}
                   onUpdate={(updates) => handleUpdateStarter('team1', 0, updates)}
                   onSwapWithTeam2={() => handleSwapTeamsStarters(0)}
-                  onDropPlayer={(playerData) => handleDropPlayerOnSlot('team1', 'starter', 0, playerData)}
+                  onDropPlayer={(data) => handlePerformSubstitution('team1', 'starter', 0, data)}
+                  onDragStartSlot={(data) => setActiveDragItem(data)}
+                  onDragEndSlot={handleDragEnd}
+                  onQuickSubstitute={(subIndex) => handleQuickSubstitute('team1', 0, subIndex)}
+                  onBenchStarter={() => handleBenchStarter('team1', 0)}
                 />
 
                 {/* Equipe 2 Slot 0 (Gardien) */}
@@ -940,9 +1353,16 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
                   team="team2"
                   playerNames={playerNames}
                   roster={roster}
+                  substitutes={period.team2.remplacants}
+                  activeDragItem={activeDragItem}
+                  isRecentlyChanged={isSlotRecentlyChanged('team2', 'starter', 0)}
                   onUpdate={(updates) => handleUpdateStarter('team2', 0, updates)}
                   onSwapWithTeam2={() => handleSwapTeamsStarters(0)}
-                  onDropPlayer={(playerData) => handleDropPlayerOnSlot('team2', 'starter', 0, playerData)}
+                  onDropPlayer={(data) => handlePerformSubstitution('team2', 'starter', 0, data)}
+                  onDragStartSlot={(data) => setActiveDragItem(data)}
+                  onDragEndSlot={handleDragEnd}
+                  onQuickSubstitute={(subIndex) => handleQuickSubstitute('team2', 0, subIndex)}
+                  onBenchStarter={() => handleBenchStarter('team2', 0)}
                 />
               </tr>
 
@@ -956,9 +1376,16 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
                     team="team1"
                     playerNames={playerNames}
                     roster={roster}
+                    substitutes={period.team1.remplacants}
+                    activeDragItem={activeDragItem}
+                    isRecentlyChanged={isSlotRecentlyChanged('team1', 'starter', slotIdx)}
                     onUpdate={(updates) => handleUpdateStarter('team1', slotIdx, updates)}
                     onSwapWithTeam2={() => handleSwapTeamsStarters(slotIdx)}
-                    onDropPlayer={(playerData) => handleDropPlayerOnSlot('team1', 'starter', slotIdx, playerData)}
+                    onDropPlayer={(data) => handlePerformSubstitution('team1', 'starter', slotIdx, data)}
+                    onDragStartSlot={(data) => setActiveDragItem(data)}
+                    onDragEndSlot={handleDragEnd}
+                    onQuickSubstitute={(subIndex) => handleQuickSubstitute('team1', slotIdx, subIndex)}
+                    onBenchStarter={() => handleBenchStarter('team1', slotIdx)}
                   />
 
                   {/* Equipe 2 Starter */}
@@ -968,9 +1395,16 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
                     team="team2"
                     playerNames={playerNames}
                     roster={roster}
+                    substitutes={period.team2.remplacants}
+                    activeDragItem={activeDragItem}
+                    isRecentlyChanged={isSlotRecentlyChanged('team2', 'starter', slotIdx)}
                     onUpdate={(updates) => handleUpdateStarter('team2', slotIdx, updates)}
                     onSwapWithTeam2={() => handleSwapTeamsStarters(slotIdx)}
-                    onDropPlayer={(playerData) => handleDropPlayerOnSlot('team2', 'starter', slotIdx, playerData)}
+                    onDropPlayer={(data) => handlePerformSubstitution('team2', 'starter', slotIdx, data)}
+                    onDragStartSlot={(data) => setActiveDragItem(data)}
+                    onDragEndSlot={handleDragEnd}
+                    onQuickSubstitute={(subIndex) => handleQuickSubstitute('team2', slotIdx, subIndex)}
+                    onBenchStarter={() => handleBenchStarter('team2', slotIdx)}
                   />
                 </tr>
               ))}
@@ -978,15 +1412,43 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
               {/* Remplaçants Header Row */}
               <tr className="bg-slate-100 text-xs font-bold text-slate-800 border-t-2 border-b border-slate-900">
                 {/* Equipe 1 Remplaçants Title */}
-                <td colSpan={4} className="p-1 pl-3 underline decoration-slate-400 border-r-2 border-slate-900">
+                <td 
+                  colSpan={4} 
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDropOverBench('team1');
+                  }}
+                  onDragLeave={() => setDropOverBench(null)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDropOverBench(null);
+                    const raw = e.dataTransfer.getData('application/json');
+                    if (raw) {
+                      try {
+                        const parsed: DragPlayerData = JSON.parse(raw);
+                        handleMovePlayerToBench('team1', parsed);
+                      } catch (err) {}
+                    }
+                  }}
+                  className={`p-1.5 pl-3 border-r-2 border-slate-900 transition-colors ${
+                    dropOverBench === 'team1' ? 'bg-emerald-100 text-emerald-900 ring-2 ring-emerald-500' : ''
+                  }`}
+                >
                   <div className="flex items-center justify-between pr-2">
-                    <span className="flex items-center gap-1.5">
-                      <span>Remplaçants :</span>
-                      <span className="text-[10px] text-slate-500 font-normal">(Déposer ici pour ajouter)</span>
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-extrabold text-slate-900">Remplaçants</span>
+                      <span className="text-[10px] text-slate-500 font-normal">
+                        ({period.team1.remplacants.filter(s => s.playerName).length} sur le banc)
+                      </span>
+                      {activeDragItem && (
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded animate-pulse">
+                          ⬇️ Déposer sur le banc
+                        </span>
+                      )}
+                    </div>
                     <button
                       onClick={() => handleAddSub('team1')}
-                      className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded flex items-center gap-1 transition-colors"
+                      className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded flex items-center gap-1 transition-colors cursor-pointer"
                     >
                       <Plus className="w-3 h-3" /> Ajouter remplaçant
                     </button>
@@ -994,15 +1456,43 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
                 </td>
 
                 {/* Equipe 2 Remplaçants Title */}
-                <td colSpan={4} className="p-1 pl-3 underline decoration-slate-400 border-r-2 border-slate-900">
+                <td 
+                  colSpan={4} 
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDropOverBench('team2');
+                  }}
+                  onDragLeave={() => setDropOverBench(null)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDropOverBench(null);
+                    const raw = e.dataTransfer.getData('application/json');
+                    if (raw) {
+                      try {
+                        const parsed: DragPlayerData = JSON.parse(raw);
+                        handleMovePlayerToBench('team2', parsed);
+                      } catch (err) {}
+                    }
+                  }}
+                  className={`p-1.5 pl-3 border-r-2 border-slate-900 transition-colors ${
+                    dropOverBench === 'team2' ? 'bg-emerald-100 text-emerald-900 ring-2 ring-emerald-500' : ''
+                  }`}
+                >
                   <div className="flex items-center justify-between pr-2">
-                    <span className="flex items-center gap-1.5">
-                      <span>Remplaçants :</span>
-                      <span className="text-[10px] text-slate-500 font-normal">(Déposer ici pour ajouter)</span>
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-extrabold text-slate-900">Remplaçants</span>
+                      <span className="text-[10px] text-slate-500 font-normal">
+                        ({period.team2.remplacants.filter(s => s.playerName).length} sur le banc)
+                      </span>
+                      {activeDragItem && (
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded animate-pulse">
+                          ⬇️ Déposer sur le banc
+                        </span>
+                      )}
+                    </div>
                     <button
                       onClick={() => handleAddSub('team2')}
-                      className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded flex items-center gap-1 transition-colors"
+                      className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded flex items-center gap-1 transition-colors cursor-pointer"
                     >
                       <Plus className="w-3 h-3" /> Ajouter remplaçant
                     </button>
@@ -1028,9 +1518,15 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
                         team="team1"
                         playerNames={playerNames}
                         roster={roster}
+                        starters={period.team1.titulaires}
+                        activeDragItem={activeDragItem}
+                        isRecentlyChanged={isSlotRecentlyChanged('team1', 'sub', subIdx)}
                         onUpdate={(updates) => handleUpdateSub('team1', subIdx, updates)}
                         onRemove={() => handleRemoveSub('team1', subIdx)}
-                        onDropPlayer={(playerData) => handleDropPlayerOnSlot('team1', 'sub', subIdx, playerData)}
+                        onDropPlayer={(data) => handlePerformSubstitution('team1', 'sub', subIdx, data)}
+                        onDragStartSlot={(data) => setActiveDragItem(data)}
+                        onDragEndSlot={handleDragEnd}
+                        onQuickEnterPitch={(starterIndex) => handleQuickSubstitute('team1', starterIndex, subIdx)}
                       />
                     ) : (
                       <td 
@@ -1041,14 +1537,14 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
                           const raw = e.dataTransfer.getData('application/json');
                           if (raw) {
                             try {
-                              const parsed = JSON.parse(raw);
-                              handleAddSub('team1', parsed);
+                              const parsed: DragPlayerData = JSON.parse(raw);
+                              handleMovePlayerToBench('team1', parsed);
                             } catch (err) {}
                           }
                         }}
                         className="border-r border-slate-400 p-2 text-slate-400 text-xs italic text-center border-dashed hover:bg-emerald-50 hover:border-emerald-400 transition-colors"
                       >
-                        + Glisser un remplaçant ici
+                        + Glisser un joueur ici pour le mettre sur le banc
                       </td>
                     )}
 
@@ -1060,9 +1556,15 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
                         team="team2"
                         playerNames={playerNames}
                         roster={roster}
+                        starters={period.team2.titulaires}
+                        activeDragItem={activeDragItem}
+                        isRecentlyChanged={isSlotRecentlyChanged('team2', 'sub', subIdx)}
                         onUpdate={(updates) => handleUpdateSub('team2', subIdx, updates)}
                         onRemove={() => handleRemoveSub('team2', subIdx)}
-                        onDropPlayer={(playerData) => handleDropPlayerOnSlot('team2', 'sub', subIdx, playerData)}
+                        onDropPlayer={(data) => handlePerformSubstitution('team2', 'sub', subIdx, data)}
+                        onDragStartSlot={(data) => setActiveDragItem(data)}
+                        onDragEndSlot={handleDragEnd}
+                        onQuickEnterPitch={(starterIndex) => handleQuickSubstitute('team2', starterIndex, subIdx)}
                       />
                     ) : (
                       <td 
@@ -1073,14 +1575,14 @@ export const MatchSheetTable: React.FC<MatchSheetTableProps> = ({
                           const raw = e.dataTransfer.getData('application/json');
                           if (raw) {
                             try {
-                              const parsed = JSON.parse(raw);
-                              handleAddSub('team2', parsed);
+                              const parsed: DragPlayerData = JSON.parse(raw);
+                              handleMovePlayerToBench('team2', parsed);
                             } catch (err) {}
                           }
                         }}
                         className="border-r-2 border-slate-900 p-2 text-slate-400 text-xs italic text-center border-dashed hover:bg-emerald-50 hover:border-emerald-400 transition-colors"
                       >
-                        + Glisser un remplaçant ici
+                        + Glisser un joueur ici pour le mettre sur le banc
                       </td>
                     )}
                   </tr>
@@ -1127,9 +1629,16 @@ interface StarterRowCellsProps {
   team: 'team1' | 'team2';
   playerNames: string[];
   roster: Player[];
+  substitutes: PlayerSlot[];
+  activeDragItem: DragPlayerData | null;
+  isRecentlyChanged?: boolean;
   onUpdate: (updates: Partial<PlayerSlot>) => void;
   onSwapWithTeam2: () => void;
-  onDropPlayer: (playerData: { id: string; name: string; position?: Position }) => void;
+  onDropPlayer: (playerData: DragPlayerData) => void;
+  onDragStartSlot: (data: DragPlayerData) => void;
+  onDragEndSlot: () => void;
+  onQuickSubstitute: (subIndex: number) => void;
+  onBenchStarter: () => void;
 }
 
 const StarterRowCells: React.FC<StarterRowCellsProps> = ({
@@ -1138,11 +1647,19 @@ const StarterRowCells: React.FC<StarterRowCellsProps> = ({
   team,
   playerNames,
   roster,
+  substitutes,
+  activeDragItem,
+  isRecentlyChanged,
   onUpdate,
   onSwapWithTeam2,
   onDropPlayer,
+  onDragStartSlot,
+  onDragEndSlot,
+  onQuickSubstitute,
+  onBenchStarter,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showSubMenu, setShowSubMenu] = useState(false);
 
   if (!slot) {
     return <td colSpan={4} className="border-r border-slate-400 p-2 text-slate-400">-</td>;
@@ -1163,7 +1680,7 @@ const StarterRowCells: React.FC<StarterRowCellsProps> = ({
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
+    e.dataTransfer.dropEffect = 'move';
     if (!isDragOver) setIsDragOver(true);
   };
 
@@ -1177,7 +1694,7 @@ const StarterRowCells: React.FC<StarterRowCellsProps> = ({
     const rawData = e.dataTransfer.getData('application/json');
     if (rawData) {
       try {
-        const parsed = JSON.parse(rawData);
+        const parsed: DragPlayerData = JSON.parse(rawData);
         onDropPlayer(parsed);
       } catch (err) {
         console.error('Failed to parse dropped player data', err);
@@ -1187,33 +1704,52 @@ const StarterRowCells: React.FC<StarterRowCellsProps> = ({
 
   const handleDragStartFromSlot = (e: React.DragEvent) => {
     if (slot.playerName) {
-      e.dataTransfer.setData('application/json', JSON.stringify({
+      const dragData: DragPlayerData = {
         id: slot.playerId || matchedPlayer?.id || 'slot-' + slot.id,
         name: slot.playerName,
         position: slot.position,
-        source: 'slot'
-      }));
+        source: 'starter',
+        sourceTeam: team,
+        sourceIndex: index,
+        sourceSlotId: slot.id,
+        sourceRating: slot.rating,
+        sourceNote: slot.note,
+      };
+      e.dataTransfer.setData('application/json', JSON.stringify(dragData));
       e.dataTransfer.effectAllowed = 'copyMove';
+      onDragStartSlot(dragData);
     }
   };
 
+  const availableSubs = substitutes.filter(s => s.playerName && s.playerName.trim());
+
   return (
     <>
-      {/* Player Avatar + Name Input + Quick Suggestion / Roster Picker */}
+      {/* Player Avatar + Name Input + Drag Handle + Quick Substitution */}
       <td 
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`border-r border-slate-400 p-1.5 transition-colors ${
-          isDragOver ? 'bg-emerald-100 ring-2 ring-emerald-500' : ''
+        className={`border-r border-slate-400 p-1.5 transition-all relative ${
+          isDragOver 
+            ? 'bg-emerald-100 ring-2 ring-emerald-500 scale-[1.01] shadow-md z-20' 
+            : isRecentlyChanged
+            ? 'bg-emerald-50 ring-2 ring-emerald-400 animate-pulse'
+            : activeDragItem && activeDragItem.source === 'sub'
+            ? 'bg-emerald-50/40 border-dashed border-emerald-400'
+            : ''
         }`}
       >
         <div 
           draggable={!!slot.playerName}
           onDragStart={handleDragStartFromSlot}
+          onDragEnd={onDragEndSlot}
           className="relative flex items-center gap-1.5 group cursor-grab active:cursor-grabbing"
         >
-          <GripVertical className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+          <GripVertical 
+            className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 group-hover:text-emerald-600 transition-opacity shrink-0" 
+            title="Glisser pour remplacer ou permuter de poste"
+          />
 
           <PlayerAvatar
             player={matchedPlayer}
@@ -1221,19 +1757,125 @@ const StarterRowCells: React.FC<StarterRowCellsProps> = ({
             size="sm"
             className="shrink-0 shadow-2xs"
           />
-          <input
-            type="text"
-            list={`roster-suggestions-${team}`}
-            value={slot.playerName}
-            onChange={(e) => handleNameChange(e.target.value)}
-            placeholder="Nom du joueur"
-            className="w-full text-xs font-bold text-slate-900 bg-transparent hover:bg-slate-100 focus:bg-white border border-transparent hover:border-slate-300 focus:border-emerald-500 rounded px-1.5 py-1 focus:outline-none"
-          />
+
+          <div className="relative flex-1 min-w-0">
+            <input
+              type="text"
+              list={`roster-suggestions-${team}`}
+              value={slot.playerName}
+              onChange={(e) => handleNameChange(e.target.value)}
+              placeholder="Nom du joueur"
+              className={`w-full text-xs font-bold text-slate-900 bg-transparent hover:bg-slate-100 focus:bg-white border rounded px-1.5 py-1 focus:outline-none transition-colors ${
+                isRecentlyChanged 
+                  ? 'border-emerald-400 text-emerald-950 font-black' 
+                  : 'border-transparent hover:border-slate-300 focus:border-emerald-500'
+              }`}
+            />
+            {isRecentlyChanged && (
+              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] font-black bg-emerald-600 text-white px-1 py-0.2 rounded shadow-2xs pointer-events-none">
+                Changement 🔁
+              </span>
+            )}
+          </div>
+
           <datalist id={`roster-suggestions-${team}`}>
             {playerNames.map((name) => (
               <option key={name} value={name} />
             ))}
           </datalist>
+
+          {/* Quick Tactile Substitution Button (Click to Swap with Sub) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowSubMenu(!showSubMenu)}
+              className={`p-1 rounded transition-all shrink-0 ${
+                showSubMenu
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 opacity-40 group-hover:opacity-100'
+              }`}
+              title="Changement de joueur en temps réel (remplacer)"
+            >
+              <ArrowUpDown className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Substitution dropdown popover */}
+            {showSubMenu && (
+              <div 
+                className="absolute left-0 top-full mt-1.5 z-50 bg-white border-2 border-emerald-500 rounded-xl shadow-2xl p-2.5 min-w-[230px] text-xs font-sans text-slate-800"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-200">
+                  <div className="font-bold text-[11px] text-slate-900 flex items-center gap-1.5">
+                    <ArrowUpDown className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Remplacer {slot.playerName ? <strong>{slot.playerName}</strong> : 'ce poste'}</span>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setShowSubMenu(false)} 
+                    className="text-slate-400 hover:text-slate-700 p-0.5 rounded"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 px-1">
+                  Remplaçants disponibles ({availableSubs.length}) :
+                </div>
+
+                <div className="space-y-1 max-h-48 overflow-y-auto pr-0.5">
+                  {availableSubs.map((sub, sIdx) => {
+                    const originalSubIndex = substitutes.indexOf(sub);
+                    const subMatched = roster.find(p => (sub.playerId && p.id === sub.playerId) || (sub.playerName && p.name.trim().toLowerCase() === sub.playerName.trim().toLowerCase()));
+                    return (
+                      <button
+                        key={sub.id || sIdx}
+                        type="button"
+                        onClick={() => {
+                          onQuickSubstitute(originalSubIndex >= 0 ? originalSubIndex : sIdx);
+                          setShowSubMenu(false);
+                        }}
+                        className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-emerald-50 hover:border-emerald-300 border border-transparent text-left transition-colors group cursor-pointer"
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <PlayerAvatar player={subMatched} name={sub.playerName} size="xs" />
+                          <div className="truncate">
+                            <div className="font-bold text-slate-900 group-hover:text-emerald-800 truncate">{sub.playerName}</div>
+                            <div className="text-[10px] text-slate-500">{sub.position}</div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">
+                          ⬆️ Entrer
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  {availableSubs.length === 0 && (
+                    <div className="text-[11px] text-slate-400 italic p-2 text-center">
+                      Aucun joueur sur le banc.
+                    </div>
+                  )}
+                </div>
+
+                {slot.playerName && (
+                  <div className="pt-2 mt-2 border-t border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onBenchStarter();
+                        setShowSubMenu(false);
+                      }}
+                      className="w-full text-left text-[11px] font-semibold text-slate-700 hover:text-amber-800 hover:bg-amber-50 p-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <ArrowDownToLine className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Mettre <strong>{slot.playerName}</strong> sur le banc</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Quick swap button with other team */}
           <button
@@ -1244,6 +1886,19 @@ const StarterRowCells: React.FC<StarterRowCellsProps> = ({
             <ArrowLeftRight className="w-3 h-3" />
           </button>
         </div>
+
+        {/* Floating tooltip preview during drag over */}
+        {isDragOver && activeDragItem && (
+          <div className="absolute top-0 left-0 right-0 -translate-y-full bg-slate-900 text-white text-[10px] font-bold py-1 px-2 rounded-md shadow-lg flex items-center justify-center gap-1 z-30 pointer-events-none">
+            {activeDragItem.source === 'sub' ? (
+              <span>🔁 Remplacer par <strong>{activeDragItem.name}</strong> ⬆️</span>
+            ) : activeDragItem.source === 'starter' ? (
+              <span>⇄ Permuter de poste avec <strong>{activeDragItem.name}</strong></span>
+            ) : (
+              <span>Assigner <strong>{activeDragItem.name}</strong></span>
+            )}
+          </div>
+        )}
       </td>
 
       {/* Position */}
@@ -1292,9 +1947,15 @@ interface SubRowCellsProps {
   team: 'team1' | 'team2';
   playerNames: string[];
   roster: Player[];
+  starters: PlayerSlot[];
+  activeDragItem: DragPlayerData | null;
+  isRecentlyChanged?: boolean;
   onUpdate: (updates: Partial<PlayerSlot>) => void;
   onRemove: () => void;
-  onDropPlayer: (playerData: { id: string; name: string; position?: Position }) => void;
+  onDropPlayer: (playerData: DragPlayerData) => void;
+  onDragStartSlot: (data: DragPlayerData) => void;
+  onDragEndSlot: () => void;
+  onQuickEnterPitch: (starterIndex: number) => void;
 }
 
 const SubRowCells: React.FC<SubRowCellsProps> = ({
@@ -1303,11 +1964,18 @@ const SubRowCells: React.FC<SubRowCellsProps> = ({
   team,
   playerNames,
   roster,
+  starters,
+  activeDragItem,
+  isRecentlyChanged,
   onUpdate,
   onRemove,
   onDropPlayer,
+  onDragStartSlot,
+  onDragEndSlot,
+  onQuickEnterPitch,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showStarterMenu, setShowStarterMenu] = useState(false);
 
   // Find player object in roster
   const matchedPlayer = roster.find(
@@ -1324,7 +1992,7 @@ const SubRowCells: React.FC<SubRowCellsProps> = ({
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
+    e.dataTransfer.dropEffect = 'move';
     if (!isDragOver) setIsDragOver(true);
   };
 
@@ -1338,7 +2006,7 @@ const SubRowCells: React.FC<SubRowCellsProps> = ({
     const rawData = e.dataTransfer.getData('application/json');
     if (rawData) {
       try {
-        const parsed = JSON.parse(rawData);
+        const parsed: DragPlayerData = JSON.parse(rawData);
         onDropPlayer(parsed);
       } catch (err) {
         console.error('Failed to parse dropped player data', err);
@@ -1348,33 +2016,50 @@ const SubRowCells: React.FC<SubRowCellsProps> = ({
 
   const handleDragStartFromSlot = (e: React.DragEvent) => {
     if (slot.playerName) {
-      e.dataTransfer.setData('application/json', JSON.stringify({
+      const dragData: DragPlayerData = {
         id: slot.playerId || matchedPlayer?.id || 'slot-' + slot.id,
         name: slot.playerName,
         position: slot.position,
-        source: 'slot'
-      }));
+        source: 'sub',
+        sourceTeam: team,
+        sourceIndex: index,
+        sourceSlotId: slot.id,
+        sourceRating: slot.rating,
+        sourceNote: slot.note,
+      };
+      e.dataTransfer.setData('application/json', JSON.stringify(dragData));
       e.dataTransfer.effectAllowed = 'copyMove';
+      onDragStartSlot(dragData);
     }
   };
 
   return (
     <>
-      {/* Player Avatar + Name */}
+      {/* Player Avatar + Name + Quick Enter Pitch Button */}
       <td 
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`border-r border-slate-400 p-1.5 transition-colors ${
-          isDragOver ? 'bg-emerald-100 ring-2 ring-emerald-500' : ''
+        className={`border-r border-slate-400 p-1.5 transition-all relative ${
+          isDragOver 
+            ? 'bg-emerald-100 ring-2 ring-emerald-500 scale-[1.01] shadow-md z-20' 
+            : isRecentlyChanged
+            ? 'bg-emerald-50 ring-2 ring-emerald-400 animate-pulse'
+            : activeDragItem && activeDragItem.source === 'starter'
+            ? 'bg-emerald-50/40 border-dashed border-emerald-400'
+            : ''
         }`}
       >
         <div 
           draggable={!!slot.playerName}
           onDragStart={handleDragStartFromSlot}
-          className="flex items-center gap-1.5 group cursor-grab active:cursor-grabbing"
+          onDragEnd={onDragEndSlot}
+          className="flex items-center gap-1.5 group cursor-grab active:cursor-grabbing relative"
         >
-          <GripVertical className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+          <GripVertical 
+            className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 group-hover:text-emerald-600 transition-opacity shrink-0" 
+            title="Glisser sur un titulaire pour le remplacer en direct"
+          />
 
           <PlayerAvatar
             player={matchedPlayer}
@@ -1382,14 +2067,103 @@ const SubRowCells: React.FC<SubRowCellsProps> = ({
             size="sm"
             className="shrink-0 shadow-2xs"
           />
-          <input
-            type="text"
-            list={`roster-suggestions-${team}`}
-            value={slot.playerName}
-            onChange={(e) => handleNameChange(e.target.value)}
-            placeholder="Nom remplaçant"
-            className="w-full text-xs font-semibold text-slate-800 bg-transparent hover:bg-slate-100 focus:bg-white border border-transparent hover:border-slate-300 focus:border-emerald-500 rounded px-1.5 py-1 focus:outline-none"
-          />
+
+          <div className="relative flex-1 min-w-0">
+            <input
+              type="text"
+              list={`roster-suggestions-${team}`}
+              value={slot.playerName}
+              onChange={(e) => handleNameChange(e.target.value)}
+              placeholder="Nom remplaçant"
+              className={`w-full text-xs font-semibold text-slate-800 bg-transparent hover:bg-slate-100 focus:bg-white border rounded px-1.5 py-1 focus:outline-none transition-colors ${
+                isRecentlyChanged 
+                  ? 'border-emerald-400 text-emerald-950 font-black' 
+                  : 'border-transparent hover:border-slate-300 focus:border-emerald-500'
+              }`}
+            />
+            {isRecentlyChanged && (
+              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] font-black bg-amber-500 text-white px-1 py-0.2 rounded shadow-2xs pointer-events-none">
+                Sur le banc ⬇️
+              </span>
+            )}
+          </div>
+
+          {/* Quick Enter Pitch Button (Changement direct) */}
+          {slot.playerName && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowStarterMenu(!showStarterMenu)}
+                className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 transition-all shrink-0 ${
+                  showStarterMenu
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                }`}
+                title="Faire entrer ce remplaçant en jeu"
+              >
+                <ArrowUpRight className="w-3 h-3" />
+                <span>Entrer ⬆️</span>
+              </button>
+
+              {/* Popup to pick which starter to replace */}
+              {showStarterMenu && (
+                <div 
+                  className="absolute left-0 top-full mt-1.5 z-50 bg-white border-2 border-emerald-500 rounded-xl shadow-2xl p-2.5 min-w-[240px] text-xs font-sans text-slate-800"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-200">
+                    <div className="font-bold text-[11px] text-slate-900 flex items-center gap-1.5">
+                      <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Faire entrer <strong>{slot.playerName}</strong></span>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => setShowStarterMenu(false)} 
+                      className="text-slate-400 hover:text-slate-700 p-0.5 rounded"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 px-1">
+                    Remplacer quel titulaire ?
+                  </div>
+
+                  <div className="space-y-1 max-h-52 overflow-y-auto pr-0.5">
+                    {starters.map((starter, stIdx) => {
+                      const starterMatched = roster.find(p => (starter.playerId && p.id === starter.playerId) || (starter.playerName && p.name.trim().toLowerCase() === starter.playerName.trim().toLowerCase()));
+                      return (
+                        <button
+                          key={starter.id || stIdx}
+                          type="button"
+                          onClick={() => {
+                            onQuickEnterPitch(stIdx);
+                            setShowStarterMenu(false);
+                          }}
+                          className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-emerald-50 hover:border-emerald-300 border border-transparent text-left transition-colors group cursor-pointer"
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[10px] font-mono font-bold text-slate-400 w-4 shrink-0">{stIdx + 1}.</span>
+                            <PlayerAvatar player={starterMatched} name={starter.playerName} size="xs" />
+                            <div className="truncate">
+                              <div className="font-bold text-slate-900 group-hover:text-emerald-800 truncate">
+                                {starter.playerName || <span className="text-slate-400 italic">Poste vide</span>}
+                              </div>
+                              <div className="text-[10px] text-slate-500">{starter.position}</div>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded shrink-0">
+                            Sortir ⬇️
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <button
             onClick={onRemove}
             className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all shrink-0"
@@ -1398,6 +2172,17 @@ const SubRowCells: React.FC<SubRowCellsProps> = ({
             <Trash2 className="w-3 h-3" />
           </button>
         </div>
+
+        {/* Floating tooltip preview during drag over */}
+        {isDragOver && activeDragItem && (
+          <div className="absolute top-0 left-0 right-0 -translate-y-full bg-slate-900 text-white text-[10px] font-bold py-1 px-2 rounded-md shadow-lg flex items-center justify-center gap-1 z-30 pointer-events-none">
+            {activeDragItem.source === 'starter' ? (
+              <span>🔁 Permuter : <strong>{activeDragItem.name}</strong> ⬇️ sur le banc</span>
+            ) : (
+              <span>⇄ Permuter avec <strong>{activeDragItem.name}</strong></span>
+            )}
+          </div>
+        )}
       </td>
 
       {/* Position (usually blank or preferred) */}

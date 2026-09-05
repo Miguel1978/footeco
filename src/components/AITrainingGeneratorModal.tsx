@@ -21,7 +21,8 @@ import {
   Crosshair,
   MoveHorizontal,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  Play
 } from 'lucide-react';
 import { TrainingSession } from '../types';
 import { 
@@ -31,6 +32,7 @@ import {
   generateFullSessionWithAI 
 } from '../utils/aiTrainingGenerator';
 import { getAvailableSeasons, getSeasonFromDate } from '../utils/season';
+import { ExerciseAnimationModal } from './ExerciseAnimationModal';
 
 interface AITrainingGeneratorModalProps {
   isOpen: boolean;
@@ -72,6 +74,17 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
   const [isLoading, setIsLoading] = useState(false);
   const [generatedSession, setGeneratedSession] = useState<TrainingSession | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [animModalData, setAnimModalData] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    focus: string;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    focus: '',
+  });
 
   const categoriesList: Array<{ id: 'Tous' | ASFThemeCategory; label: string; icon: string }> = [
     { id: 'Tous', label: 'Tous les thèmes', icon: '🌟' },
@@ -645,36 +658,108 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                   </span>
                   
                   {/* Part 1 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs">
-                    <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
-                      <span>1. {generatedSession.initialPart.title}</span>
-                      <span className="text-[11px] text-slate-500">{generatedSession.initialPart.duration}</span>
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs flex gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
+                        <span>1. {generatedSession.initialPart.title}</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAnimModalData({
+                              isOpen: true,
+                              title: generatedSession.initialPart.title,
+                              description: generatedSession.initialPart.description,
+                              focus: generatedSession.themeTE.description
+                            })}
+                            className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-md text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Voir l'animation de cet atelier"
+                          >
+                            <Play className="w-2.5 h-2.5 fill-red-600 text-red-600" />
+                            <span>Animation</span>
+                          </button>
+                          <span className="text-[11px] text-slate-500">{generatedSession.initialPart.duration}</span>
+                        </div>
+                      </div>
+                      <p className="text-slate-600 line-clamp-2 text-[11px] whitespace-pre-line">
+                        {generatedSession.initialPart.description}
+                      </p>
                     </div>
-                    <p className="text-slate-600 line-clamp-2 text-[11px] whitespace-pre-line">
-                      {generatedSession.initialPart.description}
-                    </p>
+                    {generatedSession.initialPart.drawing1?.image && (
+                      <div 
+                        className="w-16 h-12 flex-shrink-0 bg-emerald-800 rounded-lg overflow-hidden border border-emerald-700 shadow-2xs"
+                        dangerouslySetInnerHTML={{ __html: generatedSession.initialPart.drawing1.image }}
+                      />
+                    )}
                   </div>
 
                   {/* Part 2 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs">
-                    <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
-                      <span>2. {generatedSession.playedForms.title}</span>
-                      <span className="text-[11px] text-slate-500">{generatedSession.playedForms.duration}</span>
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs flex gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
+                        <span>2. {generatedSession.playedForms.title}</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAnimModalData({
+                              isOpen: true,
+                              title: generatedSession.playedForms.title,
+                              description: generatedSession.playedForms.description,
+                              focus: generatedSession.themeTA.description
+                            })}
+                            className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-md text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Voir l'animation de cet atelier"
+                          >
+                            <Play className="w-2.5 h-2.5 fill-red-600 text-red-600" />
+                            <span>Animation</span>
+                          </button>
+                          <span className="text-[11px] text-slate-500">{generatedSession.playedForms.duration}</span>
+                        </div>
+                      </div>
+                      <p className="text-slate-600 line-clamp-2 text-[11px] whitespace-pre-line">
+                        {generatedSession.playedForms.description}
+                      </p>
                     </div>
-                    <p className="text-slate-600 line-clamp-2 text-[11px] whitespace-pre-line">
-                      {generatedSession.playedForms.description}
-                    </p>
+                    {generatedSession.playedForms.drawing1?.image && (
+                      <div 
+                        className="w-16 h-12 flex-shrink-0 bg-emerald-800 rounded-lg overflow-hidden border border-emerald-700 shadow-2xs"
+                        dangerouslySetInnerHTML={{ __html: generatedSession.playedForms.drawing1.image }}
+                      />
+                    )}
                   </div>
 
                   {/* Part 3 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs">
-                    <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
-                      <span>3. {generatedSession.finalGame.title}</span>
-                      <span className="text-[11px] text-slate-500">{generatedSession.finalGame.duration}</span>
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs flex gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
+                        <span>3. {generatedSession.finalGame.title}</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAnimModalData({
+                              isOpen: true,
+                              title: generatedSession.finalGame.title,
+                              description: generatedSession.finalGame.description,
+                              focus: generatedSession.themeTE.description
+                            })}
+                            className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-md text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Voir l'animation de cet atelier"
+                          >
+                            <Play className="w-2.5 h-2.5 fill-red-600 text-red-600" />
+                            <span>Animation</span>
+                          </button>
+                          <span className="text-[11px] text-slate-500">{generatedSession.finalGame.duration}</span>
+                        </div>
+                      </div>
+                      <p className="text-slate-600 line-clamp-2 text-[11px] whitespace-pre-line">
+                        {generatedSession.finalGame.description}
+                      </p>
                     </div>
-                    <p className="text-slate-600 line-clamp-2 text-[11px] whitespace-pre-line">
-                      {generatedSession.finalGame.description}
-                    </p>
+                    {generatedSession.finalGame.drawing1?.image && (
+                      <div 
+                        className="w-16 h-12 flex-shrink-0 bg-emerald-800 rounded-lg overflow-hidden border border-emerald-700 shadow-2xs"
+                        dangerouslySetInnerHTML={{ __html: generatedSession.finalGame.drawing1.image }}
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -746,6 +831,17 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
         </div>
 
       </div>
+
+      {animModalData.isOpen && (
+        <ExerciseAnimationModal
+          isOpen={animModalData.isOpen}
+          onClose={() => setAnimModalData(prev => ({ ...prev, isOpen: false }))}
+          partTitle={animModalData.title}
+          partDescription={animModalData.description}
+          partFocus={animModalData.focus}
+          category={category}
+        />
+      )}
     </div>
   );
 };

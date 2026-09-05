@@ -12,7 +12,7 @@ export interface DrillPreset {
 }
 
 // Reusable SVG snippets
-const PITCH_BASE = `
+export const PITCH_BASE = `
   <defs>
     <linearGradient id="grassGrad" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#2d8a39" />
@@ -518,3 +518,312 @@ export const DRILL_PRESETS: DrillPreset[] = [
 export function getPresetSvg(id: string): string | undefined {
   return DRILL_PRESETS.find(p => p.id === id)?.svgContent;
 }
+
+// Generates a specialized vector tactical diagram dynamically tailored to the exercise details
+export function generateTailoredSvgFromExercise(options: {
+  title?: string;
+  description?: string;
+  slotName?: 'Dessin 1' | 'Dessin 2' | string;
+  partType?: 'initialPart' | 'playedForms' | 'finalGame' | string;
+  coach?: string;
+  theme?: string;
+}): string {
+  const title = options.title || '';
+  const desc = (options.description || '').toLowerCase();
+  const fullText = `${title} ${desc} ${options.theme || ''}`.toLowerCase();
+  const coach = options.coach || 'Coach';
+  const isSlot2 = options.slotName === 'Dessin 2';
+
+  // Analysis of exercise keywords
+  const isGame = options.partType === 'finalGame' || fullText.includes('6v6') || fullText.includes('6c6') || fullText.includes('match') || fullText.includes('jeu final');
+  const is2v1 = fullText.includes('2v1') || fullText.includes('2c1') || fullText.includes('3v2') || fullText.includes('3c2') || fullText.includes('4v3') || fullText.includes('supériorité') || fullText.includes('décalage');
+  const isShooting = fullText.includes('tir') || fullText.includes('frappe') || fullText.includes('finition') || fullText.includes('gardien') || fullText.includes('cage') || fullText.includes('but');
+  const isConservation = fullText.includes('conservation') || fullText.includes('rondo') || fullText.includes('possession') || fullText.includes('4v4') || fullText.includes('3v3') || fullText.includes('taureau') || fullText.includes('joker');
+  const isSlalom = fullText.includes('slalom') || fullText.includes('piquet') || fullText.includes('motricité') || fullText.includes('conduite') || fullText.includes('coordination') || fullText.includes('dribble');
+  const isPressing = fullText.includes('pressing') || fullText.includes('cadrage') || fullText.includes('récupération') || fullText.includes('bloc') || fullText.includes('interception');
+
+  const coachBadge = `
+    <g transform="translate(15, 205)">
+      <rect width="${Math.max(52, coach.length * 9)}" height="20" rx="5" fill="#0f172a" opacity="0.9" stroke="rgba(255,255,255,0.3)" stroke-width="0.8" />
+      <text x="${Math.max(26, (coach.length * 9) / 2)}" y="14" font-size="10" font-family="sans-serif" font-weight="bold" fill="#38bdf8" text-anchor="middle">${coach}</text>
+    </g>
+  `;
+
+  const cleanTitle = (options.title || options.slotName || 'Atelier').slice(0, 32);
+  const titlePill = `
+    <g transform="translate(10, 10)">
+      <rect width="${Math.min(220, cleanTitle.length * 7 + 28)}" height="22" rx="11" fill="rgba(15,23,42,0.8)" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+      <circle cx="12" cy="11" r="4.5" fill="${isSlot2 ? '#f59e0b' : '#38bdf8'}" />
+      <text x="22" y="15" font-size="9.5" font-family="sans-serif" font-weight="bold" fill="#ffffff">${cleanTitle}</text>
+    </g>
+  `;
+
+  // 1. MATCH FINAL 6V6 (FootEco)
+  if (isGame) {
+    return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+      ${PITCH_BASE}
+      <rect width="400" height="70" fill="url(#skyGrad)" />
+      <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
+      <rect x="5" y="65" width="390" height="170" fill="url(#stripes)" opacity="0.6"/>
+      <polygon points="120,65 280,65 310,130 90,130" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" />
+      <polygon points="90,170 310,170 340,235 60,235" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" />
+      <line x1="25" y1="150" x2="375" y2="150" stroke="rgba(255,255,255,0.8)" stroke-width="2" />
+      <ellipse cx="200" cy="150" rx="45" ry="16" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="2" />
+      <!-- Goals -->
+      <rect x="170" y="55" width="60" height="10" fill="none" stroke="#ffffff" stroke-width="2" />
+      <rect x="160" y="232" width="80" height="8" fill="none" stroke="#ffffff" stroke-width="2" />
+      <!-- Team Blue (1 GK + 5 Joueurs) -->
+      <circle cx="200" cy="72" r="5.5" fill="#facc15" stroke="#ffffff" stroke-width="1.5" />
+      <circle cx="150" cy="95" r="5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
+      <circle cx="250" cy="95" r="5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
+      <circle cx="165" cy="130" r="5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
+      <circle cx="235" cy="130" r="5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
+      <circle cx="200" cy="160" r="5.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
+      <!-- Team Red (1 GK + 5 Joueurs) -->
+      <circle cx="200" cy="225" r="6" fill="#10b981" stroke="#ffffff" stroke-width="1.5" />
+      <circle cx="145" cy="205" r="6" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
+      <circle cx="255" cy="205" r="6" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
+      <circle cx="165" cy="170" r="6" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
+      <circle cx="235" cy="170" r="6" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
+      <circle cx="200" cy="138" r="5.5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
+      <!-- Ball & Pass vectors -->
+      <circle cx="200" cy="148" r="3.5" fill="#ffffff" stroke="#000" stroke-width="1" />
+      <path d="M 200,160 L 225,135" stroke="#ffffff" stroke-width="1.5" stroke-dasharray="3,2" marker-end="url(#arrowPass)" />
+      <!-- Substitutes juggling in sideline group -->
+      <g transform="translate(315, 165)">
+        <rect x="-10" y="-12" width="80" height="36" rx="6" fill="#0f172a" opacity="0.85" stroke="rgba(255,255,255,0.2)" stroke-width="1" />
+        <circle cx="10" cy="2" r="4.5" fill="#2563eb" stroke="#fff" stroke-width="1" />
+        <circle cx="26" cy="2" r="4.5" fill="#ef4444" stroke="#fff" stroke-width="1" />
+        <circle cx="42" cy="2" r="4.5" fill="#2563eb" stroke="#fff" stroke-width="1" />
+        <text x="28" y="18" font-size="8" font-family="sans-serif" font-weight="bold" fill="#facc15" text-anchor="middle">Jonglages 3c3</text>
+      </g>
+      ${titlePill}
+      ${coachBadge}
+    </svg>`;
+  }
+
+  // 2. SUPÉRIORITÉ NUMÉRIQUE 2V1 / 3V2 (Transition offensive)
+  if (is2v1) {
+    return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+      ${PITCH_BASE}
+      <rect width="400" height="70" fill="url(#skyGrad)" />
+      <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
+      <rect x="5" y="65" width="390" height="170" fill="url(#stripes)" opacity="0.6"/>
+      <!-- Penalty area in perspective -->
+      <polygon points="120,65 280,65 310,135 90,135" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" />
+      <ellipse cx="200" cy="135" rx="45" ry="16" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" />
+      <!-- Goal & Keeper -->
+      <rect x="170" y="55" width="60" height="10" fill="none" stroke="#ffffff" stroke-width="2" />
+      <circle cx="200" cy="70" r="5.5" fill="#10b981" stroke="#ffffff" stroke-width="1.5" />
+      <!-- Cones defining the launching gate -->
+      <circle cx="100" cy="200" r="4" fill="#fbbf24" stroke="#d97706" />
+      <circle cx="300" cy="200" r="4" fill="#fbbf24" stroke="#d97706" />
+      ${isSlot2 ? `
+        <!-- Slot 2: 3v2 avec 2 mini-buts de repli -->
+        <!-- Attackers in Blue -->
+        <circle cx="120" cy="205" r="5.5" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+        <text x="120" y="218" font-size="7.5" font-family="sans-serif" font-weight="bold" fill="#fff" text-anchor="middle">A1</text>
+        <circle cx="200" cy="210" r="5.5" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+        <text x="200" y="224" font-size="7.5" font-family="sans-serif" font-weight="bold" fill="#fff" text-anchor="middle">A2</text>
+        <circle cx="280" cy="205" r="5.5" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+        <text x="280" y="218" font-size="7.5" font-family="sans-serif" font-weight="bold" fill="#fff" text-anchor="middle">A3</text>
+        <!-- Defenders in Red -->
+        <circle cx="165" cy="150" r="5.5" fill="#ef4444" stroke="#fff" stroke-width="1.5" />
+        <text x="165" y="142" font-size="7.5" font-family="sans-serif" font-weight="bold" fill="#fff" text-anchor="middle">D1</text>
+        <circle cx="235" cy="150" r="5.5" fill="#ef4444" stroke="#fff" stroke-width="1.5" />
+        <text x="235" y="142" font-size="7.5" font-family="sans-serif" font-weight="bold" fill="#fff" text-anchor="middle">D2</text>
+        <!-- Pass & Movement vectors -->
+        <path d="M 200,205 L 140,165" stroke="#ffffff" stroke-width="1.8" stroke-dasharray="3,2" marker-end="url(#arrowPass)" />
+        <path d="M 120,200 Q 110,150 145,110" fill="none" stroke="#fbbf24" stroke-width="2" marker-end="url(#arrowYellow)" />
+        <path d="M 280,200 Q 290,150 255,110" fill="none" stroke="#fbbf24" stroke-width="2" marker-end="url(#arrowYellow)" />
+        <!-- 2 Mini counter goals at bottom -->
+        <rect x="70" y="225" width="28" height="6" fill="#fbbf24" stroke="#d97706" />
+        <rect x="300" y="225" width="28" height="6" fill="#fbbf24" stroke="#d97706" />
+      ` : `
+        <!-- Slot 1: 2v1 rapide vers le grand but -->
+        <!-- Attackers in Blue -->
+        <circle cx="150" cy="205" r="5.5" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+        <text x="138" y="209" font-size="7.5" font-family="sans-serif" font-weight="bold" fill="#fff">A1</text>
+        <circle cx="250" cy="205" r="5.5" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+        <text x="260" y="209" font-size="7.5" font-family="sans-serif" font-weight="bold" fill="#fff">A2</text>
+        <!-- Defender in Red -->
+        <circle cx="200" cy="150" r="6" fill="#ef4444" stroke="#fff" stroke-width="1.5" />
+        <text x="210" y="147" font-size="7.5" font-family="sans-serif" font-weight="bold" fill="#fff">D1</text>
+        <!-- Passing & Decoy run -->
+        <path d="M 155,200 L 235,160" stroke="#ffffff" stroke-width="2" stroke-dasharray="3,2" marker-end="url(#arrowPass)" />
+        <path d="M 150,195 Q 120,145 170,105" fill="none" stroke="#fbbf24" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrowYellow)" />
+        <path d="M 250,195 Q 265,145 220,105" fill="none" stroke="#fbbf24" stroke-width="2" marker-end="url(#arrowYellow)" />
+        <circle cx="165" cy="195" r="3.5" fill="#ffffff" stroke="#000" stroke-width="1" />
+      `}
+      ${titlePill}
+      ${coachBadge}
+    </svg>`;
+  }
+
+  // 3. TIR / FINITION AU BUT
+  if (isShooting) {
+    return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+      ${PITCH_BASE}
+      <rect width="400" height="70" fill="url(#skyGrad)" />
+      <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
+      <rect x="5" y="65" width="390" height="170" fill="url(#stripes)" opacity="0.6"/>
+      <polygon points="120,65 280,65 310,140 90,140" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" />
+      <ellipse cx="200" cy="140" rx="45" ry="16" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" />
+      <!-- Goal & Keeper -->
+      <rect x="165" y="55" width="70" height="11" fill="none" stroke="#ffffff" stroke-width="2" />
+      <circle cx="200" cy="69" r="6" fill="#10b981" stroke="#ffffff" stroke-width="1.5" />
+      <!-- Cones delimiting shooting box -->
+      <circle cx="130" cy="145" r="4" fill="#ef4444" />
+      <circle cx="270" cy="145" r="4" fill="#ef4444" />
+      <!-- Pivot / Feeder Player (Blue J1) -->
+      <circle cx="200" cy="120" r="5.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
+      <text x="200" y="112" font-size="7.5" font-family="sans-serif" font-weight="bold" fill="#fff" text-anchor="middle">Pivot</text>
+      <!-- Defender on back of pivot -->
+      <circle cx="200" cy="108" r="5.5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
+      <!-- Striker starting from deep -->
+      <circle cx="150" cy="210" r="6" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
+      <text x="130" y="214" font-size="8" font-family="sans-serif" font-weight="bold" fill="#fff">Tireur</text>
+      <circle cx="158" cy="205" r="3.5" fill="#fff" stroke="#000" stroke-width="1" />
+      <!-- Waiting column -->
+      <circle cx="135" cy="220" r="4" fill="#2563eb" />
+      <circle cx="120" cy="225" r="4" fill="#2563eb" />
+      <!-- Action 1: Pass to pivot -->
+      <path d="M 160,205 L 195,125" stroke="#ffffff" stroke-width="2" stroke-dasharray="3,2" marker-end="url(#arrowPass)" />
+      <!-- Action 2: Layoff return into shooting zone -->
+      <path d="M 195,120 L 225,135" stroke="#ffffff" stroke-width="2" stroke-dasharray="3,2" marker-end="url(#arrowPass)" />
+      <!-- Action 3: Striker run and shot into corner -->
+      <path d="M 155,200 Q 180,165 220,140" fill="none" stroke="#fbbf24" stroke-width="2.2" marker-end="url(#arrowYellow)" />
+      <path d="M 230,135 L 175,65" stroke="#fbbf24" stroke-width="2.5" marker-end="url(#arrowYellow)" />
+      ${titlePill}
+      ${coachBadge}
+    </svg>`;
+  }
+
+  // 4. CONSERVATION / RONDO / POSSESSION
+  if (isConservation) {
+    return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+      ${PITCH_BASE}
+      <rect width="400" height="240" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
+      <rect width="400" height="240" fill="url(#stripes)" opacity="0.4"/>
+      <!-- Central Possession Grid (Cones) -->
+      <rect x="70" y="35" width="260" height="170" fill="rgba(0,0,0,0.12)" stroke="#ffffff" stroke-width="1.8" stroke-dasharray="5,4" />
+      <circle cx="70" cy="35" r="4.5" fill="#fbbf24" stroke="#d97706" />
+      <circle cx="330" cy="35" r="4.5" fill="#fbbf24" stroke="#d97706" />
+      <circle cx="70" cy="205" r="4.5" fill="#fbbf24" stroke="#d97706" />
+      <circle cx="330" cy="205" r="4.5" fill="#fbbf24" stroke="#d97706" />
+      <!-- 4 Outer Blue Players on edges -->
+      <circle cx="200" cy="35" r="6" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+      <circle cx="200" cy="205" r="6" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+      <circle cx="70" cy="120" r="6" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+      <circle cx="330" cy="120" r="6" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+      <!-- Inside Defenders in Red -->
+      <circle cx="150" cy="95" r="5.5" fill="#ef4444" stroke="#fff" stroke-width="1.5" />
+      <circle cx="250" cy="95" r="5.5" fill="#ef4444" stroke="#fff" stroke-width="1.5" />
+      <circle cx="160" cy="150" r="5.5" fill="#ef4444" stroke="#fff" stroke-width="1.5" />
+      <!-- Jokers in Yellow/Orange in center -->
+      <circle cx="200" cy="120" r="6" fill="#fbbf24" stroke="#000" stroke-width="1.5" />
+      <circle cx="130" cy="120" r="5.5" fill="#fbbf24" stroke="#000" stroke-width="1.5" />
+      <circle cx="270" cy="120" r="5.5" fill="#fbbf24" stroke="#000" stroke-width="1.5" />
+      <!-- Ball & Triangle Passing Network -->
+      <path d="M 200,35 L 270,120 L 330,120 L 200,205" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-dasharray="4,2" marker-end="url(#arrowWhite)" />
+      <circle cx="260" cy="115" r="3.5" fill="#fff" stroke="#000" stroke-width="1" />
+      ${titlePill}
+      ${coachBadge}
+    </svg>`;
+  }
+
+  // 5. SLALOM, CONDUITE & MOTRICITÉ (1v1 contournement ou parcours technique)
+  if (isSlalom) {
+    return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+      ${PITCH_BASE}
+      <rect width="400" height="70" fill="url(#skyGrad)" />
+      <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
+      <rect x="5" y="65" width="390" height="170" fill="url(#stripes)" opacity="0.6"/>
+      <!-- Slalom poles / piquets vertically standing -->
+      <line x1="120" y1="165" x2="120" y2="185" stroke="#f59e0b" stroke-width="3.5" stroke-linecap="round" />
+      <line x1="165" y1="140" x2="165" y2="160" stroke="#f59e0b" stroke-width="3.5" stroke-linecap="round" />
+      <line x1="210" y1="165" x2="210" y2="185" stroke="#f59e0b" stroke-width="3.5" stroke-linecap="round" />
+      <line x1="255" y1="140" x2="255" y2="160" stroke="#f59e0b" stroke-width="3.5" stroke-linecap="round" />
+      <!-- Cones -->
+      <circle cx="120" cy="185" r="4" fill="#ef4444" />
+      <circle cx="165" cy="160" r="4" fill="#fbbf24" />
+      <circle cx="210" cy="185" r="4" fill="#ef4444" />
+      <circle cx="255" cy="160" r="4" fill="#fbbf24" />
+      <!-- Snake Dribbling Wavy Curve -->
+      <path d="M 75,205 Q 115,215 135,170 Q 155,130 180,180 Q 205,215 225,160 Q 245,130 275,175 Q 300,205 340,165" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-dasharray="4,3" marker-end="url(#arrowYellow)" />
+      <!-- Finish Mini Goal -->
+      <rect x="335" y="145" width="30" height="8" fill="#fbbf24" stroke="#d97706" stroke-width="1.5" />
+      <!-- Player at start -->
+      <circle cx="75" cy="205" r="5.5" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+      <circle cx="85" cy="200" r="3.5" fill="#fff" stroke="#000" stroke-width="1" />
+      <!-- Line of players waiting -->
+      <circle cx="55" cy="210" r="4.5" fill="#2563eb" stroke="#fff" />
+      <circle cx="40" cy="215" r="4" fill="#2563eb" stroke="#fff" />
+      ${titlePill}
+      ${coachBadge}
+    </svg>`;
+  }
+
+  // 6. PRESSING & BLOC DÉFENSIF
+  if (isPressing) {
+    return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+      ${PITCH_BASE}
+      <rect width="400" height="70" fill="url(#skyGrad)" />
+      <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
+      <rect x="5" y="65" width="390" height="170" fill="url(#stripes)" opacity="0.6"/>
+      <!-- Goal on top -->
+      <rect x="170" y="55" width="60" height="10" fill="none" stroke="#ffffff" stroke-width="2" />
+      <circle cx="200" cy="70" r="5.5" fill="#facc15" stroke="#ffffff" stroke-width="1.5" />
+      <!-- Opponent Blue Team playing out -->
+      <circle cx="150" cy="95" r="5.5" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+      <circle cx="250" cy="95" r="5.5" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+      <circle cx="200" cy="115" r="5.5" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+      <!-- Pressing Red Team shifting as a unit -->
+      <circle cx="185" cy="130" r="6" fill="#ef4444" stroke="#fff" stroke-width="1.5" />
+      <circle cx="140" cy="135" r="6" fill="#ef4444" stroke="#fff" stroke-width="1.5" />
+      <circle cx="230" cy="135" r="6" fill="#ef4444" stroke="#fff" stroke-width="1.5" />
+      <!-- Pressing Vectors -->
+      <path d="M 185,130 L 195,118" stroke="#ef4444" stroke-width="2" marker-end="url(#arrowYellow)" />
+      <path d="M 140,135 L 148,105" stroke="#ef4444" stroke-width="2" marker-end="url(#arrowYellow)" />
+      <!-- Intercepted pass arrow -->
+      <path d="M 200,115 L 170,105" stroke="#ffffff" stroke-width="1.8" stroke-dasharray="3,2" />
+      <line x1="178" y1="108" x2="186" y2="114" stroke="#ef4444" stroke-width="2.5" />
+      <line x1="186" y1="108" x2="178" y2="114" stroke="#ef4444" stroke-width="2.5" />
+      <!-- 2 Target recovery mini-goals -->
+      <rect x="90" y="225" width="30" height="6" fill="#fbbf24" stroke="#d97706" />
+      <rect x="280" y="225" width="30" height="6" fill="#fbbf24" stroke="#d97706" />
+      ${titlePill}
+      ${coachBadge}
+    </svg>`;
+  }
+
+  // 7. DUEL 1C1 / ATELIER PAR DÉFAUT
+  return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+    ${PITCH_BASE}
+    <rect width="400" height="70" fill="url(#skyGrad)" />
+    <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
+    <rect x="5" y="65" width="390" height="170" fill="url(#stripes)" opacity="0.6"/>
+    <!-- Central duel corridor -->
+    <line x1="130" y1="65" x2="90" y2="235" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-dasharray="5,4" />
+    <line x1="270" y1="65" x2="310" y2="235" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-dasharray="5,4" />
+    <!-- Goals -->
+    <rect x="170" y="55" width="60" height="10" fill="none" stroke="#ffffff" stroke-width="2" />
+    <!-- Cones & Piquets -->
+    <circle cx="150" cy="180" r="4" fill="#fbbf24" stroke="#d97706" stroke-width="1" />
+    <circle cx="250" cy="180" r="4" fill="#fbbf24" stroke="#d97706" stroke-width="1" />
+    <line x1="185" y1="165" x2="185" y2="180" stroke="#f59e0b" stroke-width="3" stroke-linecap="round" />
+    <line x1="215" y1="165" x2="215" y2="180" stroke="#f59e0b" stroke-width="3" stroke-linecap="round" />
+    <!-- Movement & Duel Arrows -->
+    <path d="M 120,210 Q 80,170 120,130 Q 170,110 200,165" fill="none" stroke="#fbbf24" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrowYellow)" />
+    <path d="M 280,210 Q 320,170 280,130 Q 230,110 200,165" fill="none" stroke="#fbbf24" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrowYellow)" />
+    <!-- Players -->
+    <circle cx="120" cy="215" r="5.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
+    <text x="106" y="219" font-size="8" font-family="sans-serif" font-weight="bold" fill="#ffffff">J1</text>
+    <circle cx="280" cy="215" r="5.5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
+    <text x="292" y="219" font-size="8" font-family="sans-serif" font-weight="bold" fill="#ffffff">J2</text>
+    <circle cx="200" cy="200" r="3.5" fill="#ffffff" stroke="#000000" stroke-width="1" />
+    ${titlePill}
+    ${coachBadge}
+  </svg>`;
+}
+
