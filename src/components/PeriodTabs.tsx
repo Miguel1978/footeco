@@ -1,6 +1,6 @@
 import React from 'react';
 import { PeriodMatch } from '../types';
-import { Clock, Plus, LayoutGrid, Eye, Shield, TrendingUp } from 'lucide-react';
+import { Clock, Plus, LayoutGrid, Eye, Shield, TrendingUp, Download } from 'lucide-react';
 
 interface PeriodTabsProps {
   periods: PeriodMatch[];
@@ -11,6 +11,7 @@ interface PeriodTabsProps {
   onOpenDurationModal: () => void;
   isQuickChartOpen?: boolean;
   onToggleQuickChart?: () => void;
+  onOpenExportModal?: () => void;
 }
 
 export const PeriodTabs: React.FC<PeriodTabsProps> = ({
@@ -22,6 +23,7 @@ export const PeriodTabs: React.FC<PeriodTabsProps> = ({
   onOpenDurationModal,
   isQuickChartOpen,
   onToggleQuickChart,
+  onOpenExportModal,
 }) => {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 mb-6 print:hidden">
@@ -132,6 +134,19 @@ export const PeriodTabs: React.FC<PeriodTabsProps> = ({
         >
           <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />
           <span>{isQuickChartOpen ? 'Masquer le graphique' : 'Aperçu Graphique'}</span>
+        </button>
+      )}
+
+      {/* Export Quick Button (PDF / Excel) */}
+      {onOpenExportModal && (
+        <button
+          type="button"
+          onClick={onOpenExportModal}
+          className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 active:scale-95 shadow-2xs cursor-pointer shrink-0"
+          title="Exporter la feuille active ou l'ensemble des 4 périodes au format PDF ou Excel"
+        >
+          <Download className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Exporter {viewMode === 'single' ? (periods[selectedPeriodIndex]?.title || 'Période') : 'Match'} (PDF/Excel)</span>
         </button>
       )}
 

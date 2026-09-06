@@ -17,7 +17,7 @@ import {
 import { MatchData } from '../types';
 import { PrintableOfficialSheet } from './PrintableOfficialSheet';
 import { exportPeriodToPdf, exportAllPeriodsToPdf } from '../utils/pdfExport';
-import { exportMatchToExcel } from '../utils/excelExport';
+import { exportMatchToExcel, exportPeriodToExcel } from '../utils/excelExport';
 import { getEventTypeConfig } from '../utils/season';
 
 interface PeriodPdfPreviewModalProps {
@@ -120,10 +120,14 @@ export const PeriodPdfPreviewModal: React.FC<PeriodPdfPreviewModalProps> = ({
     }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = (exportSingle: boolean = false) => {
     setIsExportingExcel(true);
     try {
-      exportMatchToExcel(matchData);
+      if (exportSingle && !viewAllPeriods) {
+        exportPeriodToExcel(matchData, selectedPeriodIdx);
+      } else {
+        exportMatchToExcel(matchData);
+      }
       setExportExcelSuccess(true);
       setTimeout(() => setExportExcelSuccess(false), 3000);
     } catch (err) {
@@ -308,23 +312,47 @@ export const PeriodPdfPreviewModal: React.FC<PeriodPdfPreviewModalProps> = ({
               <span className="hidden sm:inline">Imprimer</span>
             </button>
 
-            {/* Export Excel (Les 4 Matchs) */}
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              disabled={isExportingExcel}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-lg shadow-2xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-              title="Exporter les 4 matchs et statistiques au format Excel (.xlsx)"
-            >
-              {isExportingExcel ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
-              ) : exportExcelSuccess ? (
-                <Check className="w-3.5 h-3.5 text-emerald-700" />
-              ) : (
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-              )}
-              <span>Excel (.xlsx)</span>
-            </button>
+            {/* Export Excel Buttons */}
+            {!viewAllPeriods ? (
+              <div className="inline-flex items-center rounded-lg border border-emerald-300 bg-emerald-100 shadow-2xs overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => handleExportExcel(true)}
+                  disabled={isExportingExcel}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-emerald-950 hover:bg-emerald-200 transition-colors disabled:opacity-50 cursor-pointer border-r border-emerald-300/80"
+                  title={`Exporter uniquement ${currentPeriod?.title || `la période ${selectedPeriodIdx + 1}`} en Excel (.xlsx)`}
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Excel M{selectedPeriodIdx + 1}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportExcel(false)}
+                  disabled={isExportingExcel}
+                  className="px-2 py-1.5 text-[11px] font-bold text-emerald-900 hover:bg-emerald-200 transition-colors disabled:opacity-50 cursor-pointer"
+                  title="Exporter les 4 périodes complètes en Excel (.xlsx)"
+                >
+                  (4 Matchs)
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleExportExcel(false)}
+                disabled={isExportingExcel}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-lg shadow-2xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                title="Exporter les 4 matchs et statistiques au format Excel (.xlsx)"
+              >
+                {isExportingExcel ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                ) : exportExcelSuccess ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-700" />
+                ) : (
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+                )}
+                <span>Excel 4 Matchs (.xlsx)</span>
+              </button>
+            )}
 
             {/* Export Single Period PDF */}
             {!viewAllPeriods && (

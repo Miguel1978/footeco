@@ -21,15 +21,21 @@ import {
   Crosshair,
   MoveHorizontal,
   ChevronRight,
+  ChevronLeft,
   ExternalLink,
-  Play
+  Play,
+  RotateCcw,
+  History,
+  Wand2
 } from 'lucide-react';
 import { TrainingSession } from '../types';
 import { 
   ASF_THEMATIC_PRESETS, 
   ASFThematicPreset, 
   ASFThemeCategory,
-  generateFullSessionWithAI 
+  generateFullSessionWithAI,
+  generateExercisePartWithAI,
+  refineThemeWithAI
 } from '../utils/aiTrainingGenerator';
 import { getAvailableSeasons, getSeasonFromDate } from '../utils/season';
 import { ExerciseAnimationModal } from './ExerciseAnimationModal';
@@ -74,6 +80,15 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
   const [isLoading, setIsLoading] = useState(false);
   const [generatedSession, setGeneratedSession] = useState<TrainingSession | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Advanced Regeneration State & Version History
+  const [sessionHistory, setSessionHistory] = useState<TrainingSession[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [regenerationInstructions, setRegenerationInstructions] = useState('');
+  const [activeVariation, setActiveVariation] = useState<string>('standard');
+  const [regeneratingSection, setRegeneratingSection] = useState<'themes' | 'initialPart' | 'playedForms' | 'finalGame' | null>(null);
+  const [regenerationAttempt, setRegenerationAttempt] = useState<number>(0);
+
   const [animModalData, setAnimModalData] = useState<{
     isOpen: boolean;
     title: string;
@@ -137,9 +152,18 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
     setSpecificInstructions(preset.defaultPrompt);
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (customVariation?: unknown, customInstructions?: unknown) => {
     setIsLoading(true);
     setErrorMessage(null);
+    const chosenVariation = (typeof customVariation === 'string' && customVariation.trim()) 
+      ? customVariation.trim() 
+      : (typeof activeVariation === 'string' && activeVariation ? activeVariation : 'standard');
+    const chosenInstructions = (typeof customInstructions === 'string') 
+      ? customInstructions 
+      : (typeof regenerationInstructions === 'string' ? regenerationInstructions : '');
+    const nextAttempt = regenerationAttempt + 1;
+    setRegenerationAttempt(nextAttempt);
+
     try {
       const session = await generateFullSessionWithAI({
         themeTitle,
@@ -148,14 +172,130 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
         coach,
         assistantCoach,
         season,
-        specificInstructions,
+        specificInstructions: [specificInstructions, chosenInstructions].filter(Boolean).join(' - '),
+        variation: chosenVariation,
+        regenerationInstructions: chosenInstructions,
+        regenerationAttempt: nextAttempt,
       });
+
       setGeneratedSession(session);
+      setSessionHistory((prev) => {
+        const nextHist = [...prev, session];
+        setHistoryIndex(nextHist.length - 1);
+        return nextHist;
+      });
     } catch (err: any) {
       console.error(err);
       setErrorMessage(err.message || 'Impossible de contacter le service IA FootEco. Réessayez.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Selective Part Regeneration
+  const handleRegeneratePart = async (partKey: 'initialPart' | 'playedForms' | 'finalGame') => {
+    if (!generatedSession) return;
+    setRegeneratingSection(partKey);
+    setErrorMessage(null);
+
+    try {
+      const focus = partKey === 'initialPart' ? 'TE/KO' : partKey === 'playedForms' ? 'TA' : 'TE/TA';
+      const updatedPart = await generateExercisePartWithAI({
+        partType: partKey,
+        themeDescription: `${generatedSession.title} - TE: ${generatedSession.themeTE?.description} - TA: ${generatedSession.themeTA?.description}`,
+        focus,
+        category,
+        coach: generatedSession.coach?.split(' ')[0] || coach?.split(' ')[0] || 'SEB',
+        assistantCoach: generatedSession.assistantCoach?.split(' ')[0] || assistantCoach?.split(' ')[0] || 'Miguel',
+        customPrompt: regenerationInstructions,
+        variation: activeVariation,
+        regenerationAttempt: regenerationAttempt + 1,
+      });
+
+      const updatedSession: TrainingSession = {
+        ...generatedSession,
+        [partKey]: {
+          ...generatedSession[partKey],
+          ...updatedPart,
+        },
+      };
+
+      setGeneratedSession(updatedSession);
+      setSessionHistory((prev) => {
+        const nextHist = [...prev, updatedSession];
+        setHistoryIndex(nextHist.length - 1);
+        return nextHist;
+      });
+      setRegenerationAttempt((prev) => prev + 1);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMessage(err.message || `Erreur lors de la régénération de ${partKey}`);
+    } finally {
+      setRegeneratingSection(null);
+    }
+  };
+
+  // Selective Themes Regeneration
+  const handleRegenerateThemes = async () => {
+    if (!generatedSession) return;
+    setRegeneratingSection('themes');
+    setErrorMessage(null);
+
+    try {
+      const tePromise = refineThemeWithAI({
+        themeType: 'TE',
+        currentText: generatedSession.title,
+        focusCategory: category,
+      });
+      const taPromise = refineThemeWithAI({
+        themeType: 'TA',
+        currentText: generatedSession.title,
+        focusCategory: category,
+      });
+
+      const [teRes, taRes] = await Promise.all([tePromise, taPromise]);
+
+      const updatedSession: TrainingSession = {
+        ...generatedSession,
+        themeTE: {
+          description: teRes.description || generatedSession.themeTE.description,
+          coachingAccents: teRes.coachingAccents || generatedSession.themeTE.coachingAccents,
+        },
+        themeTA: {
+          ...generatedSession.themeTA,
+          description: taRes.description || generatedSession.themeTA.description,
+          coachingAccents: taRes.coachingAccents || generatedSession.themeTA.coachingAccents,
+        },
+      };
+
+      setGeneratedSession(updatedSession);
+      setSessionHistory((prev) => {
+        const nextHist = [...prev, updatedSession];
+        setHistoryIndex(nextHist.length - 1);
+        return nextHist;
+      });
+    } catch (err: any) {
+      console.error(err);
+      setErrorMessage('Erreur lors de la régénération des thèmes.');
+    } finally {
+      setRegeneratingSection(null);
+    }
+  };
+
+  // History Navigation
+  const handleHistoryBack = () => {
+    if (historyIndex > 0) {
+      const nextIdx = historyIndex - 1;
+      setHistoryIndex(nextIdx);
+      setGeneratedSession(sessionHistory[nextIdx]);
+    }
+  };
+
+  const handleHistoryForward = () => {
+    if (historyIndex < sessionHistory.length - 1) {
+      const nextIdx = historyIndex + 1;
+      setHistoryIndex(nextIdx);
+      setGeneratedSession(sessionHistory[nextIdx]);
     }
   };
 
@@ -594,6 +734,44 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                     className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-medium focus:border-red-500 focus:outline-none"
                   />
                 </div>
+
+                {/* Style / Innovation selector */}
+                <div className="pt-2 border-t border-slate-200">
+                  <label className="block font-black text-xs text-slate-800 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Style et renouvellement des exercices</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-medium normal-case">
+                      Chaque génération propose des ateliers 100% adaptés au thème
+                    </span>
+                  </label>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { id: 'standard', label: '🔄 Ateliers variés & équilibrés', desc: 'Ateliers complets selon le thème sélectionné' },
+                      { id: 'haute_intensite', label: '⚡ Haute intensité & Vitesse', desc: 'Rythme élevé, zéro temps mort, enchaînements vifs' },
+                      { id: 'gardiens_finition', label: '🥅 Avec gardiens & Finition', desc: 'Centres, frappes en 1 touche et face-à-face' },
+                      { id: 'espaces_reduits', label: '📐 Espaces réduits (2 touches)', desc: 'Jeu sous forte pression et vivacité mentale' },
+                      { id: 'duels_recuperation', label: '🛡️ Duels & Récupération', desc: 'Cadrage, fermeture des axes et transitions rapides' },
+                      { id: 'inedit_creatif', label: '🎲 Atelier 100% Inédit / Surprenez-moi', desc: 'Conception d\'ateliers novateurs et originaux' },
+                    ].map((variant) => (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        onClick={() => setActiveVariation(variant.id)}
+                        title={variant.desc}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
+                          activeVariation === variant.id
+                            ? 'bg-red-700 text-white border-red-800 shadow-xs'
+                            : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+                        }`}
+                      >
+                        <span>{variant.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {errorMessage && (
@@ -606,28 +784,177 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
           ) : (
             /* PREVIEW OF GENERATED SESSION */
             <div className="space-y-4 animate-in fade-in">
-              <div className="flex items-center justify-between bg-emerald-50 border border-emerald-300 p-3 rounded-xl text-xs">
+              {/* Header Navigation with Version History */}
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-emerald-50 border border-emerald-300 p-3 rounded-xl text-xs">
                 <div className="flex items-center gap-2 text-emerald-950 font-extrabold">
-                  <Check className="w-4 h-4 text-emerald-700" />
-                  <span>Séance FootEco générée avec succès selon les critères ASF !</span>
+                  <Check className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <span>Séance FootEco générée selon la méthodologie ASF</span>
+                  {sessionHistory.length > 1 && (
+                    <span className="bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full text-[10px] font-black">
+                      Version {historyIndex + 1} / {sessionHistory.length}
+                    </span>
+                  )}
                 </div>
-                <button
-                  onClick={() => setGeneratedSession(null)}
-                  className="text-emerald-800 hover:text-emerald-950 font-bold underline cursor-pointer"
-                >
-                  Modifier les paramètres
-                </button>
+
+                <div className="flex items-center gap-2">
+                  {sessionHistory.length > 1 && (
+                    <div className="flex items-center gap-1 bg-white/80 border border-emerald-300 rounded-lg p-0.5">
+                      <button
+                        type="button"
+                        onClick={handleHistoryBack}
+                        disabled={historyIndex <= 0}
+                        className="p-1 text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100 disabled:opacity-30 disabled:hover:bg-transparent rounded cursor-pointer transition-colors"
+                        title="Revenir à la version précédente"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="text-[10px] font-black text-emerald-900 px-1">
+                        v{historyIndex + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleHistoryForward}
+                        disabled={historyIndex >= sessionHistory.length - 1}
+                        className="p-1 text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100 disabled:opacity-30 disabled:hover:bg-transparent rounded cursor-pointer transition-colors"
+                        title="Aller à la version suivante"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => setGeneratedSession(null)}
+                    className="text-emerald-800 hover:text-emerald-950 font-bold underline cursor-pointer text-xs"
+                  >
+                    Modifier les paramètres
+                  </button>
+                </div>
+              </div>
+
+              {/* SMART REGENERATION TOOLBAR */}
+              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-red-950 text-white p-4 rounded-2xl border border-slate-700 shadow-md space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-red-600/30 border border-red-500/40 text-amber-300">
+                      <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black text-white flex items-center gap-1.5">
+                        <span>Régénérateur Intelligent ASF</span>
+                        <span className="bg-amber-400/20 text-amber-300 border border-amber-400/40 px-1.5 py-0.2 text-[9px] rounded-full uppercase tracking-wider font-extrabold">
+                          Multi-Variantes
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-slate-300">
+                        Explorez instantanément d'autres variantes pédagogiques ou affinez avec une consigne précise.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleGenerate('standard')}
+                    disabled={isLoading}
+                    className="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
+                    <span>Nouvelle proposition complète</span>
+                  </button>
+                </div>
+
+                {/* Quick Variations Pills */}
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 block mb-1.5 uppercase tracking-wider">
+                    Variantes méthodologiques rapides FootEco :
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { id: 'haute_intensite', label: '⚡ Haute intensité & 0 attente', desc: 'Répétition maximale et transition express' },
+                      { id: 'gardiens_finition', label: '🥅 Avec gardiens & finition', desc: 'Situations orientées frappes et tirs rapides' },
+                      { id: 'duels_recuperation', label: '🛡️ Duels & récupération', desc: 'Cadrage agressif et gain du ballon' },
+                      { id: 'espaces_reduits', label: '📐 Espace réduit & 2 touches', desc: 'Prises d’information 360° et vivacité' },
+                      { id: 'standard', label: '🔄 Variante alternative', desc: 'Ateliers et situations inédits' },
+                    ].map((variant) => (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveVariation(variant.id);
+                          handleGenerate(variant.id);
+                        }}
+                        disabled={isLoading}
+                        title={variant.desc}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1 cursor-pointer disabled:opacity-50 ${
+                          activeVariation === variant.id
+                            ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-xs'
+                            : 'bg-white/10 hover:bg-white/20 text-slate-200 border-white/15'
+                        }`}
+                      >
+                        <span>{variant.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Regeneration Prompt Input */}
+                <div className="flex gap-2 pt-1">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={regenerationInstructions}
+                      onChange={(e) => setRegenerationInstructions(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !isLoading) {
+                          handleGenerate(undefined, regenerationInstructions);
+                        }
+                      }}
+                      placeholder="Consigne d'affinage (ex: insister sur le pied faible, ajouter du jeu à 3, intégrer les couloirs...)"
+                      className="w-full bg-slate-800/90 border border-slate-600 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-400 font-medium focus:outline-none focus:border-red-400"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleGenerate(undefined, regenerationInstructions)}
+                    disabled={isLoading}
+                    className="px-3.5 py-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shrink-0 shadow-xs"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                    ) : (
+                      <Wand2 className="w-3.5 h-3.5 text-amber-300" />
+                    )}
+                    <span>Régénérer avec cette consigne</span>
+                  </button>
+                </div>
               </div>
 
               {/* Summary Card */}
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
-                <div>
-                  <span className="text-[10px] font-black uppercase text-red-700 tracking-wider">
-                    {generatedSession.team} • Saison {generatedSession.season}
-                  </span>
-                  <h3 className="text-base font-black text-slate-900 mt-0.5">
-                    {generatedSession.title}
-                  </h3>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-red-700 tracking-wider">
+                      {generatedSession.team} • Saison {generatedSession.season}
+                    </span>
+                    <h3 className="text-base font-black text-slate-900 mt-0.5">
+                      {generatedSession.title}
+                    </h3>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleRegenerateThemes}
+                    disabled={regeneratingSection === 'themes'}
+                    className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                    title="Régénérer les thèmes et accents de coaching FootEco"
+                  >
+                    {regeneratingSection === 'themes' ? (
+                      <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
+                    ) : (
+                      <RefreshCw className="w-3 h-3 text-slate-600" />
+                    )}
+                    <span>Régénérer les thèmes</span>
+                  </button>
                 </div>
 
                 {/* Themes */}
@@ -654,15 +981,25 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                 {/* 3 Exercises preview */}
                 <div className="space-y-2">
                   <span className="font-extrabold text-xs text-slate-800">
-                    Déroulement FootEco en 3 Parties :
+                    Déroulement FootEco en 3 Parties (Jouer - Jouer - Jouer) :
                   </span>
                   
                   {/* Part 1 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs flex gap-3">
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs flex gap-3 hover:border-slate-300 transition-colors">
                     <div className="flex-1">
                       <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
-                        <span>1. {generatedSession.initialPart.title}</span>
-                        <div className="flex items-center gap-2">
+                        <span className="text-red-900 font-black">1. {generatedSession.initialPart.title}</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleRegeneratePart('initialPart')}
+                            disabled={regeneratingSection === 'initialPart'}
+                            className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-md text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                            title="Régénérer uniquement cet atelier TE/KO"
+                          >
+                            <RefreshCw className={`w-2.5 h-2.5 ${regeneratingSection === 'initialPart' ? 'animate-spin' : ''}`} />
+                            <span>Régénérer</span>
+                          </button>
                           <button
                             type="button"
                             onClick={() => setAnimModalData({
@@ -677,7 +1014,7 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                             <Play className="w-2.5 h-2.5 fill-red-600 text-red-600" />
                             <span>Animation</span>
                           </button>
-                          <span className="text-[11px] text-slate-500">{generatedSession.initialPart.duration}</span>
+                          <span className="text-[11px] text-slate-500 font-medium">{generatedSession.initialPart.duration}</span>
                         </div>
                       </div>
                       <p className="text-slate-600 line-clamp-2 text-[11px] whitespace-pre-line">
@@ -693,11 +1030,21 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                   </div>
 
                   {/* Part 2 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs flex gap-3">
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs flex gap-3 hover:border-slate-300 transition-colors">
                     <div className="flex-1">
                       <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
-                        <span>2. {generatedSession.playedForms.title}</span>
-                        <div className="flex items-center gap-2">
+                        <span className="text-blue-900 font-black">2. {generatedSession.playedForms.title}</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleRegeneratePart('playedForms')}
+                            disabled={regeneratingSection === 'playedForms'}
+                            className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-md text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                            title="Régénérer uniquement ces formes jouées TA"
+                          >
+                            <RefreshCw className={`w-2.5 h-2.5 ${regeneratingSection === 'playedForms' ? 'animate-spin' : ''}`} />
+                            <span>Régénérer</span>
+                          </button>
                           <button
                             type="button"
                             onClick={() => setAnimModalData({
@@ -712,7 +1059,7 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                             <Play className="w-2.5 h-2.5 fill-red-600 text-red-600" />
                             <span>Animation</span>
                           </button>
-                          <span className="text-[11px] text-slate-500">{generatedSession.playedForms.duration}</span>
+                          <span className="text-[11px] text-slate-500 font-medium">{generatedSession.playedForms.duration}</span>
                         </div>
                       </div>
                       <p className="text-slate-600 line-clamp-2 text-[11px] whitespace-pre-line">
@@ -728,11 +1075,21 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                   </div>
 
                   {/* Part 3 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs flex gap-3">
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs flex gap-3 hover:border-slate-300 transition-colors">
                     <div className="flex-1">
                       <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
-                        <span>3. {generatedSession.finalGame.title}</span>
-                        <div className="flex items-center gap-2">
+                        <span className="text-indigo-900 font-black">3. {generatedSession.finalGame.title}</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleRegeneratePart('finalGame')}
+                            disabled={regeneratingSection === 'finalGame'}
+                            className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-md text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                            title="Régénérer uniquement le jeu final 6v6"
+                          >
+                            <RefreshCw className={`w-2.5 h-2.5 ${regeneratingSection === 'finalGame' ? 'animate-spin' : ''}`} />
+                            <span>Régénérer</span>
+                          </button>
                           <button
                             type="button"
                             onClick={() => setAnimModalData({
@@ -747,7 +1104,7 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                             <Play className="w-2.5 h-2.5 fill-red-600 text-red-600" />
                             <span>Animation</span>
                           </button>
-                          <span className="text-[11px] text-slate-500">{generatedSession.finalGame.duration}</span>
+                          <span className="text-[11px] text-slate-500 font-medium">{generatedSession.finalGame.duration}</span>
                         </div>
                       </div>
                       <p className="text-slate-600 line-clamp-2 text-[11px] whitespace-pre-line">
@@ -789,35 +1146,49 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
           </button>
 
           {!generatedSession ? (
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={isLoading || !themeTitle.trim()}
-              className="px-5 py-2.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-xl text-xs font-black flex items-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-50 cursor-pointer"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>Génération selon la philosophie ASF...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>Générer la séance FootEco (IA ASF)</span>
-                </>
-              )}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleGenerate(activeVariation)}
+                disabled={isLoading || !themeTitle.trim()}
+                className="px-5 py-2.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-xl text-xs font-black flex items-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Création d'exercices inédits ASF...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>Générer des exercices inédits (IA FootEco)</span>
+                  </>
+                )}
+              </button>
+            </div>
           ) : (
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={handleGenerate}
+                onClick={() => handleGenerate('inedit_creatif')}
                 disabled={isLoading}
-                className="px-3.5 py-2 bg-white hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-300 flex items-center gap-1.5 cursor-pointer"
+                title="Créer une toute nouvelle variante d'exercices sur ce même thème"
+                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-xl text-xs font-bold transition-colors border border-amber-300 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                <span>🎲 Exercices 100% différents</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleGenerate(activeVariation)}
+                disabled={isLoading}
+                className="px-3.5 py-2 bg-white hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-300 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                <span>Régénérer</span>
+                <span>Régénérer ({activeVariation === 'standard' ? 'variante' : activeVariation})</span>
               </button>
+
               <button
                 type="button"
                 onClick={handleConfirmApply}

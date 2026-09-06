@@ -39,6 +39,7 @@ import { getInitialMatchData } from '../initialData';
 import { exportMatchToExcel } from '../utils/excelExport';
 import { exportMatchToPdf } from '../utils/pdfExport';
 import { PeriodPdfPreviewModal } from './PeriodPdfPreviewModal';
+import { ExportMatchModal } from './ExportMatchModal';
 import { CopyCompoModal } from './CopyCompoModal';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthModal } from './AuthModal';
@@ -105,6 +106,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [excelExportSuccess, setExcelExportSuccess] = useState(false);
   const [showPeriodPdfModal, setShowPeriodPdfModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [showCopyCompoModal, setShowCopyCompoModal] = useState(false);
   const [copyNotification, setCopyNotification] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -415,6 +417,18 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Copy className="w-3.5 h-3.5 text-indigo-600" />
             <span>Copier Compo</span>
+          </button>
+
+          {/* Export Principal : Feuille active ou 4 Matchs (PDF & Excel) */}
+          <button
+            id="btn-export-match-modal"
+            type="button"
+            onClick={() => setShowExportModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 rounded-lg shadow-2xs transition-all cursor-pointer ring-1 ring-indigo-500"
+            title="Exporter la feuille de match active ou les 4 périodes au format PDF ou fichier Excel avec scores, compositions et notes tactiques"
+          >
+            <Download className="w-3.5 h-3.5 text-white shrink-0" />
+            <span>Exporter (PDF/Excel)</span>
           </button>
 
           {/* Export Excel (.xlsx - Les 4 Matchs) */}
@@ -870,6 +884,17 @@ export const Header: React.FC<HeaderProps> = ({
       <UserManagementModal
         isOpen={showUsersModal}
         onClose={() => setShowUsersModal(false)}
+      />
+
+      {/* Complete Export Match Modal (Active Sheet / 4 Periods in PDF & Excel) */}
+      <ExportMatchModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        matchData={matchData}
+        activePeriodIndex={activePeriodIndex}
+        onOpenPdfPreviewModal={(pIdx, viewAll) => {
+          setShowPeriodPdfModal(true);
+        }}
       />
 
       {/* Period PDF Preview & Export Modal */}

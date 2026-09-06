@@ -104,6 +104,7 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
     partFocus: string;
     slotName?: 'Dessin 1' | 'Dessin 2' | 'Complet';
     category?: string;
+    partKey?: 'initialPart' | 'playedForms' | 'finalGame';
   }>({
     isOpen: false,
     partTitle: '',
@@ -115,7 +116,8 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
     partTitle: string,
     partDescription: string,
     partFocus: string = '',
-    slotName?: 'Dessin 1' | 'Dessin 2' | 'Complet'
+    slotName?: 'Dessin 1' | 'Dessin 2' | 'Complet',
+    partKey?: 'initialPart' | 'playedForms' | 'finalGame'
   ) => {
     setAnimationModalState({
       isOpen: true,
@@ -124,7 +126,30 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
       partFocus,
       slotName,
       category: currentSession?.team || 'FE12',
+      partKey
     });
+  };
+
+  const handleSaveAnimationScenario = (scenario: any, slotName?: 'Dessin 1' | 'Dessin 2' | 'Complet') => {
+    if (!currentSession) return;
+    const updated = JSON.parse(JSON.stringify(currentSession));
+    const pKey = animationModalState.partKey || 'initialPart';
+
+    if (updated[pKey]) {
+      const part = updated[pKey];
+      if (slotName === 'Dessin 1') {
+        if (!part.drawing1) part.drawing1 = {};
+        part.drawing1.animationScenario = scenario;
+      } else if (slotName === 'Dessin 2') {
+        if (!part.drawing2) part.drawing2 = {};
+        part.drawing2.animationScenario = scenario;
+      } else {
+        part.animationScenario = scenario;
+      }
+      setCurrentSession(updated);
+      saveTrainingSession(updated);
+      setSessions(loadTrainingSessions());
+    }
   };
 
   // Reload sessions when opening
@@ -1304,7 +1329,7 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
               generatingSlotKey={generatingSlotKey}
               onGenerateAI={() => handleGeneratePartAI('initialPart')}
               onGenerateDiagramAI={(slot) => handleGenerateSlotDiagramAI('initialPart', slot)}
-              onOpenAnimation={(slot) => handleOpenAnimation(currentSession.initialPart.title, currentSession.initialPart.description, currentSession.themeTE?.description || '', slot)}
+              onOpenAnimation={(slot) => handleOpenAnimation(currentSession.initialPart.title, currentSession.initialPart.description, currentSession.themeTE?.description || '', slot, 'initialPart')}
               onChange={(updated) => setCurrentSession({ ...currentSession, initialPart: updated })}
               onOpenDiagram={(slot) => handleOpenDiagramModal('initialPart', currentSession.initialPart.title, slot)}
             />
@@ -1318,7 +1343,7 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
               generatingSlotKey={generatingSlotKey}
               onGenerateAI={() => handleGeneratePartAI('playedForms')}
               onGenerateDiagramAI={(slot) => handleGenerateSlotDiagramAI('playedForms', slot)}
-              onOpenAnimation={(slot) => handleOpenAnimation(currentSession.playedForms.title, currentSession.playedForms.description, currentSession.themeTA?.description || '', slot)}
+              onOpenAnimation={(slot) => handleOpenAnimation(currentSession.playedForms.title, currentSession.playedForms.description, currentSession.themeTA?.description || '', slot, 'playedForms')}
               onChange={(updated) => setCurrentSession({ ...currentSession, playedForms: updated })}
               onOpenDiagram={(slot) => handleOpenDiagramModal('playedForms', currentSession.playedForms.title, slot)}
             />
@@ -1332,7 +1357,7 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
               generatingSlotKey={generatingSlotKey}
               onGenerateAI={() => handleGeneratePartAI('finalGame')}
               onGenerateDiagramAI={(slot) => handleGenerateSlotDiagramAI('finalGame', slot)}
-              onOpenAnimation={(slot) => handleOpenAnimation(currentSession.finalGame.title, currentSession.finalGame.description, currentSession.themeTE?.description || '', slot)}
+              onOpenAnimation={(slot) => handleOpenAnimation(currentSession.finalGame.title, currentSession.finalGame.description, currentSession.themeTE?.description || '', slot, 'finalGame')}
               onChange={(updated) => setCurrentSession({ ...currentSession, finalGame: updated })}
               onOpenDiagram={(slot) => handleOpenDiagramModal('finalGame', currentSession.finalGame.title, slot)}
             />
@@ -1457,6 +1482,7 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
           slotName={animationModalState.slotName}
           category={animationModalState.category}
           session={currentSession || undefined}
+          onSaveScenario={handleSaveAnimationScenario}
         />
       )}
 

@@ -239,10 +239,19 @@ export const PrintableOfficialSheet: React.FC<PrintableOfficialSheetProps> = ({
             </tbody>
           </table>
 
-          {period.notes && (
-            <div className="mt-1 p-1.5 border-2 border-black bg-slate-50 text-xs">
-              <span className="font-bold">Observations / Remarques : </span>
-              <span className="italic">{period.notes}</span>
+          {period.notes && period.notes.trim() ? (
+            <div className="mt-2 p-2 border-2 border-black bg-slate-50 text-xs">
+              <span className="font-extrabold uppercase text-[11px] text-slate-900 mr-2">
+                📋 Notes & Consignes Tactiques ({period.title}) :
+              </span>
+              <span className="text-slate-900 whitespace-pre-wrap leading-relaxed">{period.notes}</span>
+            </div>
+          ) : (
+            <div className="mt-1.5 p-1.5 border border-slate-300 bg-slate-50/60 text-[11px] text-slate-600">
+              <span className="font-bold uppercase text-[10px] text-slate-700 mr-2">
+                📋 Notes Tactiques ({period.title}) :
+              </span>
+              <span className="italic text-slate-400">Aucune consigne ou observation renseignée pour cette période</span>
             </div>
           )}
         </div>

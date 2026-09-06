@@ -1,6 +1,7 @@
 import { TrainingSession, TrainingExercisePart } from '../types';
 import { getPresetSvg, generateTailoredSvgFromExercise } from './pitchDiagrams';
 import { getSeasonFromDate } from './season';
+import { generateAsfSessionProcedural } from './asfProceduralGenerator';
 
 export type ASFThemeCategory = 'Technique' | 'Tactique' | 'Passe' | 'Dribble' | 'Tir / Finition' | 'Défense' | 'Transition';
 
@@ -270,20 +271,42 @@ export async function generateFullSessionWithAI(params: {
   assistantCoach?: string;
   season?: string;
   specificInstructions?: string;
+  variation?: string;
+  regenerationInstructions?: string;
+  regenerationAttempt?: number;
 }): Promise<TrainingSession> {
-  const response = await fetch('/api/ai/generate-training-session', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  let raw: any = null;
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `Erreur serveur: ${response.status}`);
+  try {
+    const response = await fetch('/api/ai/generate-training-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      raw = data.session;
+    }
+  } catch (err) {
+    console.warn('Network or AI service issue, using procedural generator:', err);
   }
 
-  const data = await response.json();
-  const raw = data.session || {};
+  // Guaranteed fallback to procedural generator
+  if (!raw) {
+    raw = generateAsfSessionProcedural({
+      themeTitle: params.themeTitle || params.focusTopic || 'Atelier FootEco',
+      category: params.category,
+      phase: params.phase,
+      focusTopic: params.focusTopic,
+      coach: params.coach,
+      assistantCoach: params.assistantCoach,
+      season: params.season,
+      specificInstructions: params.specificInstructions,
+      variation: typeof params.variation === 'string' ? params.variation : 'standard',
+      regenerationAttempt: params.regenerationAttempt || 0,
+    });
+  }
 
   const today = new Date().toISOString().split('T')[0];
   const season = params.season || getSeasonFromDate(today);
@@ -425,19 +448,39 @@ export async function generateExercisePartWithAI(params: {
   coach?: string;
   assistantCoach?: string;
   customPrompt?: string;
+  variation?: string;
+  regenerationInstructions?: string;
+  regenerationAttempt?: number;
 }): Promise<Partial<TrainingExercisePart>> {
-  const response = await fetch('/api/ai/generate-exercise-part', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  let raw: any = null;
 
-  if (!response.ok) {
-    throw new Error('Erreur lors de la génération de l\'atelier');
+  try {
+    const response = await fetch('/api/ai/generate-exercise-part', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      raw = data.exercisePart;
+    }
+  } catch (err) {
+    console.warn('Network or AI service issue for exercise part, using procedural generator:', err);
   }
 
-  const data = await response.json();
-  const raw = data.exercisePart || {};
+  if (!raw) {
+    const fullProcedural = generateAsfSessionProcedural({
+      themeTitle: params.themeDescription || 'Atelier FootEco',
+      category: params.category,
+      coach: params.coach,
+      assistantCoach: params.assistantCoach,
+      specificInstructions: params.customPrompt,
+      variation: typeof params.variation === 'string' ? params.variation : 'standard',
+      regenerationAttempt: params.regenerationAttempt || 0,
+    });
+    raw = (fullProcedural as any)[params.partType] || {};
+  }
 
   const partDesc = formatStringOrArray(raw.description);
 

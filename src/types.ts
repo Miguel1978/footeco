@@ -86,6 +86,7 @@ export interface TrainingDrawing {
   image?: string; // Data URL / SVG / URL
   coach?: string; // Coach initial or name (e.g. "SEB", "Miguel")
   caption?: string; // Caption or drill sub-title
+  animationScenario?: any; // Saved custom tactical drill animation scenario
 }
 
 export interface TrainingExercisePart {
@@ -95,6 +96,7 @@ export interface TrainingExercisePart {
   description: string; // Detail of drills (Dessin 1 = ..., Dessin 2 = ...)
   drawing1: TrainingDrawing;
   drawing2: TrainingDrawing;
+  animationScenario?: any; // Saved custom tactical drill animation scenario for part
 }
 
 export interface TrainingSession {

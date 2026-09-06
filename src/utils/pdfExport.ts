@@ -230,10 +230,19 @@ export async function exportPeriodToPdf(
   const periodSlug = (period?.title || `Periode_${periodIndex + 1}`).trim().replace(/\s+/g, '_');
   const filename = `Feuille_FootEco_FE12_${opponent}_${periodSlug}_${dateStr}.pdf`;
 
-  // Look for target element
-  const original = document.getElementById(targetElementId);
+  // Look for target element with seamless fallbacks
+  let original = document.getElementById(targetElementId);
   if (!original) {
-    console.warn(`Element #${targetElementId} not found, falling back to full export`);
+    original = document.getElementById(`printable-period-page-${periodIndex}`);
+  }
+  if (!original) {
+    original = document.getElementById('period-printable-sheet-preview');
+  }
+  if (!original) {
+    original = document.getElementById('official-printable-sheet');
+  }
+  if (!original) {
+    console.warn(`Element #${targetElementId} and fallbacks not found, falling back to full export`);
     return exportMatchToPdf(matchData);
   }
 

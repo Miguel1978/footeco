@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { generateTailoredSvgFromExercise } from "./src/utils/pitchDiagrams";
+import { generateAsfSessionProcedural } from "./src/utils/asfProceduralGenerator";
 
 dotenv.config();
 
@@ -96,10 +97,9 @@ async function generateContentWithFallback(options: {
     return null;
   }
 
-  // Official supported models in order of capability & speed
+  // Official supported models from @google/genai SDK in order of capability & speed
   const modelsToTry = [
     "gemini-3.8-flash",
-    "gemini-2.5-flash",
     "gemini-3.1-flash-lite",
     "gemini-flash-latest",
   ];
@@ -122,18 +122,26 @@ async function generateContentWithFallback(options: {
           return response.text;
         }
       } catch (err: any) {
+        const isQuota =
+          err?.status === 429 ||
+          err?.message?.includes("429") ||
+          err?.message?.includes("Quota exceeded") ||
+          err?.message?.includes("RESOURCE_EXHAUSTED");
+
+        if (isQuota) {
+          // Immediately move to next valid model, do not waste retries on exhausted quota
+          break;
+        }
+
         const isTransient =
           err?.status === 503 ||
-          err?.status === 429 ||
           err?.message?.includes("503") ||
-          err?.message?.includes("429") ||
           err?.message?.includes("high demand") ||
-          err?.message?.includes("RESOURCE_EXHAUSTED") ||
           err?.message?.includes("UNAVAILABLE");
 
         if (isTransient && attempt === 0) {
-          // Wait 500ms before retrying once
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          // Wait 300ms before retrying once
+          await new Promise((resolve) => setTimeout(resolve, 300));
           continue;
         }
 
@@ -151,23 +159,24 @@ Tu es un Directeur Technique et Formateur d'Élite de l'Association Suisse de Fo
 Tu conçois des fiches de séances d'entraînement officielles FootEco basées scrupuleusement sur les principes méthodologiques de l'ASF :
 
 1. PHILOSOPHIE FOOTECO ASF :
-- "Jouer - Jouer - Jouer" : Intensité maximale, aucun temps mort (0 attente en file), volume de répétitions et de touches de balle maximal.
-- Plaisir, autonomie, prise d'initiative, développement de l'intelligence de jeu.
-- Le jeu guide l'apprentissage (pédagogie active avec questionnement ouvert).
+- "Jouer - Jouer - Jouer" : Intensité maximale, aucun temps mort (zéro attente en file), volume de répétitions et de touches de balle maximal.
+- Plaisir, autonomie, créativité, prise d'initiative, développement de l'intelligence de jeu.
+- Pédagogie active avec questionnement ouvert ("Que vois-tu ?", "Où est l'espace libre ?").
 
-2. STRUCTURE DE LA SÉANCE OFFICIELLE FOOTECO (3 PARTIES) :
-- PARTIE INITIALE (Focus TE/KO - Technique & Coordination) : Formes d'échauffement dynamique avec ballon, coordination motrice, travail technique analytique ou semi-global (ex: duels 1c1 rapides, prises de balle orientées, slaloms avec finition, circuits de passes vivaces). Deux ateliers complémentaires (Dessin 1 & Dessin 2) animés par les 2 coaches.
-- FORMES JOUÉES (Focus TA - Tactique & Situations) : Formes jouées stimulantes (ex: 1c1 en 4 zones avec mini-buts, 2c1, 3c2, 4c3, rondo de transition, jeux de possession orientés avec cibles). Dessin 1 et Dessin 2.
-- JEU FINAL (Focus TE/TA - Match d'application) : Match en effectif réduit (6v6 ou 4v4 sur double terrain) avec règles pédagogiques provocatrices en lien avec le thème du jour (ex: but après 1v1 réussi = double, relance sous pression, etc.). Préciser l'activité des remplaçants (ex: jonglage de groupe, travail technique individualisé).
+2. EXIGENCE D'ORIGINALITÉ ET ADAPTATION AU THÈME :
+- INTERDICTION ABSOLUE de proposer toujours les mêmes exercices génériques (comme un duel 1c1 ou un rondo basique) à chaque génération !
+- Chaque séance doit être UNIQUE, VARIÉE et COLLER PARFAITEMENT au thème spécifique choisi par l'entraîneur (Passes courtes, Dédoublements, Centres & reprises, Finition au but, Relance, Cadrage défensif, Transitions 3 secondes, etc.).
+- Varie les structures spatiales : circuits en vague, losanges, triangles de combinaison, zones interdites, mini-portes de couleur, stop-ball, supériorité numérique temporaire (3v2, 4v3), appuis et jokers extérieurs.
+- Les 2 ateliers de chaque phase (Dessin 1 et Dessin 2) doivent être clairement différents et complémentaires.
 
-3. THÈMES FOOTECO :
-- Thème TE (Technique) : Geste technique spécifique (ex: première touche orientée, passe claquée au sol, feinte et dribble, récupération du ballon, tir au but). Accents de coaching techniques précis.
-- Thème TA (Tactique) : Phase défensive (DEF), offensive (OFF) ou transition. Ex: freiner et orienter, fermer l'axe, couper les lignes de passe, créer des lignes d'appui, dédoublement, transition 3 secondes.
-- Thème PE (Physique / Psycho-émotionnel) : Vivacité de réaction, motricité, communication positive, détermination, courage, respect.
+3. STRUCTURE DE LA SÉANCE OFFICIELLE FOOTECO (3 PARTIES) :
+- PARTIE INITIALE (Focus TE/KO - Technique & Coordination) : Échauffement dynamique avec ballon, coordination motrice, travail technique ciblé sur le thème. Deux ateliers complémentaires (Dessin 1 & Dessin 2) animés par les 2 entraîneurs.
+- FORMES JOUÉES (Focus TA - Tactique & Situations) : Formes jouées stimulantes en petits groupes (Dessin 1 & Dessin 2) avec cibles, mini-buts, zones ou règles de transition.
+- JEU FINAL (Focus TE/TA - Match d'application) : Match en effectif réduit (6v6 ou 4v4) avec règle pédagogique provocatrice récompensant l'objectif du thème du jour. Préciser l'activité technique des remplaçants.
 
 4. INDIVIDUALISATION & BILAN :
-- Repères d'individualisation (différenciation espace/temps, nombre de touches, devoirs techniques).
-- Bilan prévisionnel pour guider l'auto-évaluation des entraîneurs.
+- Repères d'individualisation (différenciation espace/temps, nombre de touches autorisées, devoirs techniques).
+- Bilan prévisionnel et critères de réussite clairs pour guider l'auto-évaluation des entraîneurs.
 `;
 
 async function startServer() {
@@ -188,46 +197,75 @@ async function startServer() {
         themeTitle,
         category = "FE12 Bas-Valais",
         phase = "DEF & OFF",
-        focusTopic = "Duels 1c1 et récupération du ballon",
+        focusTopic = "",
         coach = "Sébastien M.",
         assistantCoach = "Miguel R.",
         season = "2025/2026",
         specificInstructions = "",
+        variation = "standard",
+        regenerationInstructions = "",
+        regenerationAttempt = 0,
       } = req.body;
 
-      let prompt = `
-Crée une fiche de séance d'entraînement complète FootEco ASF officielle pour la catégorie ${category}, saison ${season}.
-Entraîneur responsable : ${coach}, Adjoint : ${assistantCoach}.
-Thème souhaité : ${themeTitle || focusTopic}.
-Phase tactique dominante : ${phase}.
-Instructions / Focus spécifique de l'entraîneur : ${specificInstructions || "Mettre l'accent sur l'intensité, le plaisir et la philosophie ASF FootEco"}.
+      const safeVariation = typeof variation === "string" ? variation : "standard";
+      const targetTheme = (typeof themeTitle === "string" && themeTitle.trim()) 
+        ? themeTitle.trim() 
+        : (typeof focusTopic === "string" && focusTopic.trim() ? focusTopic.trim() : "Jeu combiné & circulation rapide");
 
-Tu DOIS répondre EXCLUSIVEMENT sous la forme d'un objet JSON strict avec la structure suivante (sans texte autour) :
+      const combinedInstructions = [
+        specificInstructions,
+        regenerationInstructions,
+        safeVariation && safeVariation !== "standard" ? `Variante demandée : ${safeVariation}` : "",
+      ]
+        .filter(Boolean)
+        .join(" - ");
+
+      const uniqueInspirationId = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+      let prompt = `
+Tu es un formateur expert ASF FootEco. Conçois une séance d'entraînement FootEco NOUVELLE, ORIGINALE et COMPLÈTE pour la catégorie ${category}, saison ${season}.
+Entraîneur responsable : ${coach}, Adjoint : ${assistantCoach}.
+
+THÈME CENTRAL OBLIGATOIRE : "${targetTheme}"
+PHASE TACTIQUE DOMINANTE : ${phase}
+${safeVariation && safeVariation !== "standard" ? `VARIANTE MÉTHODOLOGIQUE SPÉCIFIQUE : ${safeVariation}` : ""}
+CONSIGNES SPÉCIFIQUES DU COACH : ${combinedInstructions || "Créer des ateliers vivants, stimulants et variés selon la philosophie Jouer-Jouer-Jouer"}
+${regenerationAttempt > 0 ? `TENTATIVE DE VARIATION N°${regenerationAttempt} : Propose des exercices et situations d'entraînement INÉDITS et TOTALEMENT DIFFÉRENTS des versions précédentes.` : ""}
+Graine d'originalité : ${uniqueInspirationId}
+
+DIRECTIVE CRUCIALE DE RENOUVELLEMENT :
+- NE PROPOSE PAS DE SCHÉMAS RÉPÉTITIFS OU STÉRÉOTYPÉS ! (Évite de toujours faire des duels 1c1 ou un banal rondo 4v2 si le thème ne le demande pas).
+- Les exercices, le matériel (coupelles, cônes, mini-buts, jalons), les dimensions du terrain et les règles doivent être CONÇUS EXCLUSIVEMENT ET SPÉCIFIQUEMENT pour travailler le thème : "${targetTheme}".
+- Dans la PARTIE INITIALE (TE/KO) : propose 2 ateliers complémentaires distincts (ex: circuit motricité avec passes et enchaînements vifs, dédoublements, vagues de percussion ou frappes selon le thème).
+- Dans les FORMES JOUÉES (TA) : conçois 2 situations jouées stimulantes avec opposition adaptée (ex: supériorités 2v1 / 3v2, jeu avec appuis extérieurs, zones de progression, transitions rapides 3 secondes).
+- Dans le JEU FINAL : propose un match 6v6 avec une règle provocatrice qui récompense directement le thème "${targetTheme}".
+
+Tu DOIS répondre EXCLUSIVEMENT sous la forme d'un objet JSON strict avec la structure suivante (aucun texte en dehors du JSON) :
 {
-  "title": "Titre clair et professionnel (ex: Séance FootEco FE12 - Récupération & Duels 1c1)",
+  "title": "Titre professionnel et stimulant mettant en avant le thème (ex: Séance FootEco ${category} - ...)",
   "team": "${category}",
   "themeTE": {
-    "description": "Description concise et percutante du geste technique ciblé",
-    "coachingAccents": "3-4 points clés d'intervention technique pour le coach (ex: Placement défensif, première touche active, pied d'appui solide)"
+    "description": "Description concise et percutante du geste technique ciblé en lien direct avec le thème",
+    "coachingAccents": "3-4 points clés d'intervention technique pour le coach (posture, appuis, surface de pied, regard)"
   },
   "themeTA": {
-    "description": "Description tactique claire (ex: Freiner et orienter l'adversaire, couper les lignes de passe, fermer l'axe)",
+    "description": "Description tactique claire et dynamique en lien avec le thème",
     "defOrOff": "${phase === 'DEF' ? 'DEF' : phase === 'OFF' ? 'OFF' : 'DEF & OFF'}",
-    "antagonism": "Antagonisme OFF/DEF (ex: Volonté de vouloir gagner le ballon vs Protéger et sortir sous pression)",
-    "coachingAccents": "Accents tactiques clés pour le coach"
+    "antagonism": "Antagonisme offensif vs défensif précis",
+    "coachingAccents": "Accents tactiques clés pour le coach sur le terrain"
   },
   "themePE": {
-    "description": "Qualités physiques et psycho-émotionnelles (ex: Vitesse de réaction, engagement et concentration)",
-    "coachingAccents": "Attitude positive, communication, dépassement de soi"
+    "description": "Qualités physiques et psycho-émotionnelles sollicitées (vivacité motrice, concentration, audace, communication)",
+    "coachingAccents": "Attitude positive, dynamisme, persévérance et esprit d'équipe"
   },
   "initialPart": {
     "title": "Partie initiale - Focus TE/KO",
     "focus": "Focus TE/KO",
     "duration": "2X 15 min (Total 30 min)",
-    "description": "Description détaillée de l'atelier 1 (Dessin 1 = ...) et de l'atelier 2 (Dessin 2 = ...) avec les règles, le matériel et les consignes claires.",
-    "drawing1Caption": "Titre court atelier 1 (ex: Duel 1c1 contournement assiettes & piquets)",
+    "description": "Description détaillée de l'atelier 1 (Dessin 1 = ...) et de l'atelier 2 (Dessin 2 = ...) avec nombre de joueurs, dimensions du terrain, matériel et consignes précises.",
+    "drawing1Caption": "Titre synthétique de l'atelier 1 illustrant l'exercice spécifique",
     "drawing1Coach": "${coach ? coach.split(' ')[0] : 'SEB'}",
-    "drawing2Caption": "Titre court atelier 2 (ex: Duel 1c1 slalom & transition)",
+    "drawing2Caption": "Titre synthétique de l'atelier 2 illustrant l'exercice spécifique",
     "drawing2Coach": "${assistantCoach ? assistantCoach.split(' ')[0] : 'Miguel'}",
     "recommendedPreset1": "preset-init-1",
     "recommendedPreset2": "preset-init-2"
@@ -236,10 +274,10 @@ Tu DOIS répondre EXCLUSIVEMENT sous la forme d'un objet JSON strict avec la str
     "title": "Formes jouées - Focus TA",
     "focus": "Focus TA",
     "duration": "2X 15 min (Total 30 min)",
-    "description": "Description détaillée de la situation tactique (Dessin 1 = ... et Dessin 2 = ...) avec zones, cibles ou mini-buts, et règles de transition.",
-    "drawing1Caption": "Titre court forme jouée 1 (ex: 1c1 en 4 zones avec 2 mini-buts)",
+    "description": "Description détaillée de la situation tactique (Dessin 1 = ... et Dessin 2 = ...) avec zones, règles d'opposition, transitions et critères de score.",
+    "drawing1Caption": "Titre synthétique de la situation tactique 1",
     "drawing1Coach": "${coach ? coach.split(' ')[0] : 'SEB'}",
-    "drawing2Caption": "Titre court forme jouée 2 (ex: 1c1 en 4 zones avec 2 mini-buts)",
+    "drawing2Caption": "Titre synthétique de la situation tactique 2",
     "drawing2Coach": "${assistantCoach ? assistantCoach.split(' ')[0] : 'Miguel'}",
     "recommendedPreset1": "preset-form-1",
     "recommendedPreset2": "preset-form-2"
@@ -248,16 +286,16 @@ Tu DOIS répondre EXCLUSIVEMENT sous la forme d'un objet JSON strict avec la str
     "title": "Jeu final - Focus TE/TA",
     "focus": "Focus TE/TA",
     "duration": "30 min",
-    "description": "Description du match final (ex: Match 6 contre 6 avec règles pédagogiques FootEco et consignes pour les remplaçants en jonglage de groupe).",
-    "drawing1Caption": "Match final 6 contre 6 (FE12 FootEco)",
+    "description": "Description du match d'application (6 contre 6 ou 4 contre 4 sur deux terrains) avec règle pédagogique provocatrice liée au thème et activité technique pour les remplaçants.",
+    "drawing1Caption": "Match d'application en lien avec le thème",
     "drawing1Coach": "",
     "drawing2Caption": "",
     "drawing2Coach": "",
     "recommendedPreset1": "preset-game-6v6",
     "recommendedPreset2": ""
   },
-  "remarksAndIndividualization": "Conseils d'individualisation ASF (différenciation espace/temps, nombre de touches, devoirs techniques pour les joueurs)",
-  "bilan": "Critères de réussite et repères d'évaluation de la séance"
+  "remarksAndIndividualization": "Conseils concrets d'individualisation ASF (adaptation espace/temps, touches de balle, défis pour joueurs avancés)",
+  "bilan": "Critères précis de réussite et repères d'évaluation de la séance"
 }
 `;
 
@@ -267,78 +305,34 @@ Tu DOIS répondre EXCLUSIVEMENT sous la forme d'un objet JSON strict avec la str
         const text = await generateContentWithFallback({
           contents: prompt,
           systemInstruction: ASF_PHILOSOPHY_SYSTEM_PROMPT,
-          temperature: 0.7,
+          temperature: 0.85,
           responseMimeType: "application/json",
         });
 
         if (text) {
           generatedJson = safeExtractAndParseJson(text);
           if (!generatedJson) {
-            console.warn("AI generation parser issue: could not parse JSON, falling back to template.");
+            console.warn("AI generation parser issue: could not parse JSON, falling back to procedural generator.");
           }
         }
       } catch (aiErr) {
-        console.warn("AI generation error, using fallback structure:", aiErr);
+        console.warn("AI generation error, using procedural ASF generator:", aiErr);
       }
 
       if (!generatedJson) {
-        // High quality deterministic ASF fallback template
-        generatedJson = {
-          title: `Séance FootEco ${category} - ${focusTopic}`,
-          team: category,
-          themeTE: {
-            description: `Maîtrise technique et qualité d'exécution orientée vers le thème : ${focusTopic}. Prises de balle actives et passes au sol.`,
-            coachingAccents: "Prise d'information avant la réception (scan 360°), orientation du corps vers l'avant, pied d'appui stable.",
-          },
-          themeTA: {
-            description: `Principes tactiques ASF : cadrer le porteur, orienter vers l'extérieur, fermer l'axe et réagir en 3 secondes à la transition.`,
-            defOrOff: phase === "DEF" ? "DEF" : phase === "OFF" ? "OFF" : "DEF & OFF",
-            antagonism: "Recherche immédiate du gain du ballon vs Sortie rapide de la zone de pression",
-            coachingAccents: "Créer des triangles d'appui, agressivité saine dans le duel, couverture mutuelle permanente.",
-          },
-          themePE: {
-            description: "Vivacité gestuelle, réactivité motrice et communication encourageante.",
-            coachingAccents: "Plaisir de jouer, persévérance face à l'échec, intensité élevée.",
-          },
-          initialPart: {
-            title: "Partie initiale - Focus TE/KO",
-            focus: "Focus TE/KO",
-            duration: "2X 15 min (Total 30 min)",
-            description: `Dessin 1 = Atelier technique en duel 1c1 après contournement d'assiettes et remise dans la course par le coach.\n\nDessin 2 = Slalom vivacité et changement de statut attaquant/défenseur immédiat.`,
-            drawing1Caption: "Duel 1c1 contournement & finition rapide",
-            drawing1Coach: coach ? coach.split(" ")[0] : "SEB",
-            drawing2Caption: "Duel 1c1 slalom motricité & transition",
-            drawing2Coach: assistantCoach ? assistantCoach.split(" ")[0] : "Miguel",
-            recommendedPreset1: "preset-init-1",
-            recommendedPreset2: "preset-init-2",
-          },
-          playedForms: {
-            title: "Formes jouées - Focus TA",
-            focus: "Focus TA",
-            duration: "2X 15 min (Total 30 min)",
-            description: `Dessin 1 = Forme jouée 1c1 en 4 zones délimitées avec 2 mini-buts. Objectif : fixer et déséquilibrer ou orienter vers la ligne de touche.\n\nDessin 2 = Même atelier en miroir pour garantir 0 temps d'attente.`,
-            drawing1Caption: "1c1 en 4 zones & mini-buts (Atelier A)",
-            drawing1Coach: coach ? coach.split(" ")[0] : "SEB",
-            drawing2Caption: "1c1 en 4 zones & mini-buts (Atelier B)",
-            drawing2Coach: assistantCoach ? assistantCoach.split(" ")[0] : "Miguel",
-            recommendedPreset1: "preset-form-1",
-            recommendedPreset2: "preset-form-2",
-          },
-          finalGame: {
-            title: "Jeu final - Focus TE/TA",
-            focus: "Focus TE/TA",
-            duration: "30 min",
-            description: `Match d'application 6 contre 6 sur terrain FootEco.\nRègles stimulantes : Les buts marqués après une action liée au thème (${focusTopic}) comptent double.\nLes remplaçants effectuent un travail technique en jonglage de groupe / devoirs techniques.`,
-            drawing1Caption: "Match final 6 contre 6 (FE12 FootEco)",
-            drawing1Coach: "",
-            drawing2Caption: "",
-            drawing2Coach: "",
-            recommendedPreset1: "preset-game-6v6",
-            recommendedPreset2: "",
-          },
-          remarksAndIndividualization: `Différenciation FootEco : adapter les dimensions du terrain pour les joueurs en difficulté, autoriser 2 touches pour stimuler la vitesse de jeu, valoriser les initiatives audacieuses.`,
-          bilan: "Évaluer l'engagement dans les duels, la fluidité des transitions et la qualité des prises d'information.",
-        };
+        // High quality thematic ASF procedural generator tailored to the exact user theme & variation
+        generatedJson = generateAsfSessionProcedural({
+          themeTitle: themeTitle || focusTopic,
+          category,
+          phase: phase as any,
+          focusTopic,
+          coach,
+          assistantCoach,
+          season,
+          specificInstructions: combinedInstructions,
+          variation: safeVariation,
+          regenerationAttempt,
+        });
       }
 
       // Automatically generate tactical vector diagrams tailored specifically to each exercise description!
@@ -414,23 +408,43 @@ Tu DOIS répondre EXCLUSIVEMENT sous la forme d'un objet JSON strict avec la str
         coach = "SEB",
         assistantCoach = "Miguel",
         customPrompt = "",
+        variation = "standard",
+        regenerationInstructions = "",
+        regenerationAttempt = 0,
       } = req.body;
 
+      const safeVariation = typeof variation === "string" ? variation : "standard";
+
+      const combinedPrompt = [
+        customPrompt,
+        regenerationInstructions,
+        safeVariation && safeVariation !== "standard" ? `Variante demandée : ${safeVariation}` : "",
+      ]
+        .filter(Boolean)
+        .join(" - ");
+
+      const uniquePartId = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
       const prompt = `
-Tu es formateur ASF FootEco. Conçois un atelier spécifique (${partType}) pour la catégorie ${category}.
-Thème général : ${themeDescription}.
-Type de partie : ${partType} (Focus ${focus}).
-Consignes particulières de l'entraîneur : ${customPrompt || "Exercice très dynamique selon la pédagogie FootEco ASF"}.
+Tu es formateur élite ASF FootEco. Conçois un atelier spécifique (${partType}) TOTALEMENT INÉDIT et STIMULANT pour la catégorie ${category}.
+THÈME CENTRAL : ${themeDescription || "Jeu combiné & circulation dynamique"}
+TYPE DE PARTIE : ${partType} (Focus ${focus})
+${safeVariation && safeVariation !== "standard" ? `VARIANTE DEMANDÉE : ${safeVariation}` : ""}
+CONSIGNES DU COACH : ${combinedPrompt || "Exercice dynamique, zéro file d'attente, plaisir et haute intensité"}
+${regenerationAttempt > 0 ? `RÉGÉNÉRATION N°${regenerationAttempt} : Propose une variante totalement inédite et originale, différente de ce qui a déjà été présenté.` : ""}
+Graine créative : ${uniquePartId}
+
+DIRECTIVE : Conçois des ateliers originaux collant STRICTEMENT au thème ci-dessus (éviter les clichés répétitifs).
 
 Réponds UNIQUEMENT avec un JSON strict :
 {
   "title": "${partType === 'initialPart' ? 'Partie initiale - Focus TE/KO' : partType === 'playedForms' ? 'Formes jouées - Focus TA' : 'Jeu final - Focus TE/TA'}",
   "focus": "Focus ${focus}",
   "duration": "${partType === 'finalGame' ? '30 min' : '2X 15 min (Total 30 min)'}",
-  "description": "Description claire et pédagogique de l'atelier avec consignes, matériel, rotation et coaching points.",
-  "drawing1Caption": "Titre synthétique Atelier 1",
+  "description": "Description claire, pédagogique et détaillée de l'atelier avec consignes, dimensions, matériel, règles précises et coaching points.",
+  "drawing1Caption": "Titre synthétique Atelier 1 en lien avec le thème",
   "drawing1Coach": "${coach}",
-  "drawing2Caption": "Titre synthétique Atelier 2",
+  "drawing2Caption": "Titre synthétique Atelier 2 en lien avec le thème",
   "drawing2Coach": "${assistantCoach}",
   "recommendedPreset1": "${partType === 'initialPart' ? 'preset-init-1' : partType === 'playedForms' ? 'preset-form-1' : 'preset-game-6v6'}",
   "recommendedPreset2": "${partType === 'initialPart' ? 'preset-init-2' : partType === 'playedForms' ? 'preset-form-2' : ''}"
@@ -442,32 +456,50 @@ Réponds UNIQUEMENT avec un JSON strict :
         const text = await generateContentWithFallback({
           contents: prompt,
           systemInstruction: ASF_PHILOSOPHY_SYSTEM_PROMPT,
-          temperature: 0.7,
+          temperature: 0.85,
           responseMimeType: "application/json",
         });
         if (text) {
           generated = safeExtractAndParseJson(text);
           if (!generated) {
-            console.warn("Exercise part AI could not parse JSON, activating fallback.");
+            console.warn("Exercise part AI could not parse JSON, activating procedural fallback.");
           }
         }
       } catch (err) {
-        console.warn("Exercise part AI error:", err);
+        console.warn("Exercise part AI error, activating procedural fallback:", err);
       }
 
       if (!generated) {
-        generated = {
-          title: partType === "initialPart" ? "Partie initiale - Focus TE/KO" : partType === "playedForms" ? "Formes jouées - Focus TA" : "Jeu final - Focus TE/TA",
-          focus: `Focus ${focus}`,
-          duration: partType === "finalGame" ? "30 min" : "2X 15 min (Total 30 min)",
-          description: `Atelier ASF FootEco : Dessin 1 = Duel et motricité orientée avec finition rapide.\n\nDessin 2 = Forme en miroir avec changement de statut pour un temps d'attente nul.`,
-          drawing1Caption: "Atelier dynamique 1",
-          drawing1Coach: coach,
-          drawing2Caption: "Atelier dynamique 2",
-          drawing2Coach: assistantCoach,
-          recommendedPreset1: partType === "initialPart" ? "preset-init-1" : partType === "playedForms" ? "preset-form-1" : "preset-game-6v6",
-          recommendedPreset2: partType === "initialPart" ? "preset-init-2" : partType === "playedForms" ? "preset-form-2" : "",
-        };
+        const fullProcedural = generateAsfSessionProcedural({
+          themeTitle: themeDescription,
+          category,
+          coach,
+          assistantCoach,
+          specificInstructions: combinedPrompt,
+          variation: safeVariation,
+          regenerationAttempt,
+        });
+
+        const extractedPart = (fullProcedural as any)[partType];
+        if (extractedPart) {
+          generated = {
+            ...extractedPart,
+            focus: `Focus ${focus}`,
+          };
+        } else {
+          generated = {
+            title: partType === "initialPart" ? "Partie initiale - Focus TE/KO" : partType === "playedForms" ? "Formes jouées - Focus TA" : "Jeu final - Focus TE/TA",
+            focus: `Focus ${focus}`,
+            duration: partType === "finalGame" ? "30 min" : "2X 15 min (Total 30 min)",
+            description: `Atelier ASF FootEco : Dessin 1 = Duel et motricité orientée avec finition rapide.\n\nDessin 2 = Forme en miroir avec changement de statut pour un temps d'attente nul.`,
+            drawing1Caption: "Atelier dynamique 1",
+            drawing1Coach: coach,
+            drawing2Caption: "Atelier dynamique 2",
+            drawing2Coach: assistantCoach,
+            recommendedPreset1: partType === "initialPart" ? "preset-init-1" : partType === "playedForms" ? "preset-form-1" : "preset-game-6v6",
+            recommendedPreset2: partType === "initialPart" ? "preset-init-2" : partType === "playedForms" ? "preset-form-2" : "",
+          };
+        }
       }
 
       // Generate tailored diagrams according to the newly created exercise description!
