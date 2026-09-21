@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   X,
   Download,
@@ -15,11 +15,23 @@ import {
   Shield,
   Clock,
   Eye,
-  FileDown
+  FileDown,
+  FileJson,
+  Copy,
+  CheckCheck,
+  Upload,
+  Database,
+  AlertCircle
 } from 'lucide-react';
 import { MatchData } from '../types';
 import { exportPeriodToPdf, exportAllPeriodsToPdf } from '../utils/pdfExport';
 import { exportPeriodToExcel, exportMatchToExcel } from '../utils/excelExport';
+import { 
+  exportMatchAsJSON, 
+  copyMatchJSONToClipboard, 
+  parseAndValidateMatchJSON,
+  generateMatchJSONFilename 
+} from '../utils/storage';
 import { getEventTypeConfig } from '../utils/season';
 
 interface ExportMatchModalProps {
@@ -28,6 +40,7 @@ interface ExportMatchModalProps {
   matchData: MatchData;
   activePeriodIndex: number;
   onOpenPdfPreviewModal?: (periodIndex: number, viewAll: boolean) => void;
+  onImportMatch?: (match: MatchData) => void;
 }
 
 export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
@@ -36,6 +49,7 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
   matchData,
   activePeriodIndex,
   onOpenPdfPreviewModal,
+  onImportMatch,
 }) => {
   const [selectedScope, setSelectedScope] = useState<'single' | 'all'>('single');
   const [targetPeriodIndex, setTargetPeriodIndex] = useState<number>(activePeriodIndex);
@@ -45,6 +59,11 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
   const [pdfSuccess, setPdfSuccess] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [excelSuccess, setExcelSuccess] = useState(false);
+  const [jsonSuccessInfo, setJsonSuccessInfo] = useState<{ filename: string; sizeKb: string } | null>(null);
+  const [jsonCopied, setJsonCopied] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccessMsg, setImportSuccessMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!isOpen) return null;
 
@@ -91,6 +110,61 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
     }
   };
 
+  const handleExportJson = () => {
+    try {
+      const result = exportMatchAsJSON(matchData);
+      setJsonSuccessInfo(result);
+      setTimeout(() => setJsonSuccessInfo(null), 4000);
+    } catch (err) {
+      console.error('Erreur export JSON:', err);
+    }
+  };
+
+  const handleCopyJson = async () => {
+    const success = await copyMatchJSONToClipboard(matchData);
+    if (success) {
+      setJsonCopied(true);
+      setTimeout(() => setJsonCopied(false), 2500);
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const content = ev.target?.result as string;
+      const res = parseAndValidateMatchJSON(content);
+      if (res.success && res.data) {
+        if (onImportMatch) {
+          const confirmLoad = window.confirm(
+            `Restaurer la feuille de match depuis "${file.name}" ?\n\n` +
+            `• Rencontre : ${res.data.matchTitle} vs ${res.data.opponent || 'N/A'}\n` +
+            `• Date : ${res.data.date}\n` +
+            `• Périodes : ${res.data.periods.length}\n` +
+            `• Joueurs dans le groupe : ${res.data.roster.length}\n\n` +
+            `Attention : Cela remplacera les données actuellement affichées.`
+          );
+          if (confirmLoad) {
+            onImportMatch(res.data);
+            setImportSuccessMsg(`Feuille restaurée avec succès (${res.data.periods.length} périodes, ${res.data.roster.length} joueurs).`);
+            setImportError(null);
+            setTimeout(() => {
+              setImportSuccessMsg(null);
+              onClose();
+            }, 1200);
+          }
+        }
+      } else {
+        setImportError(res.error || 'Fichier JSON invalide.');
+        setImportSuccessMsg(null);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   const handleDirectPrint = () => {
     window.print();
   };
@@ -119,7 +193,7 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden text-slate-900">
+      <div className="relative flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden text-slate-900">
         
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50/80">
@@ -129,7 +203,7 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-extrabold text-slate-900 leading-tight">
-                Exporter la Feuille de Match FootEco
+                Exporter ou Sauvegarder la Feuille de Match
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
                 {eventConfig.label} • {matchData.opponent ? `vs ${matchData.opponent}` : 'Séance'} • {matchData.date || 'Aujourd’hui'}
@@ -148,7 +222,7 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 space-y-5 overflow-y-auto max-h-[80vh]">
+        <div className="p-5 space-y-5 overflow-y-auto max-h-[82vh]">
           
           {/* Step 1: Selection of Scope */}
           <div>
@@ -157,9 +231,16 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Option A: Période active */}
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setSelectedScope('single')}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedScope('single');
+                  }
+                }}
                 className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
                   selectedScope === 'single'
                     ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-500/30'
@@ -176,7 +257,7 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-slate-600 mb-3">
-                  Exporte uniquement <strong>{currentPeriod?.title}</strong> ({currentPeriod?.durationMinutes || 15}m) avec ses scores, compositions et notes tactiques.
+                  Pour PDF & Excel : exporte uniquement <strong>{currentPeriod?.title}</strong> ({currentPeriod?.durationMinutes || 15}m) avec ses scores, compositions et notes tactiques.
                 </p>
 
                 {/* Sub-selector if multiple periods */}
@@ -203,12 +284,19 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
                     ))}
                   </div>
                 </div>
-              </button>
+              </div>
 
               {/* Option B: Les 4 Périodes */}
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setSelectedScope('all')}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedScope('all');
+                  }
+                }}
                 className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
                   selectedScope === 'all'
                     ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-500/30'
@@ -230,9 +318,9 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
                   </p>
                 </div>
                 <div className="pt-2 border-t border-slate-200/60 mt-3 text-[11px] font-bold text-slate-500 flex items-center gap-1">
-                  <span>Format : 4 pages A4 paysage ou classeur multi-onglets</span>
+                  <span>Format : 4 pages A4 paysage, classeur Excel complet ou sauvegarde JSON</span>
                 </div>
-              </button>
+              </div>
             </div>
           </div>
 
@@ -241,12 +329,12 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
             <div className="font-bold text-slate-900 mb-2 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 <Shield className="w-4 h-4 text-emerald-600" />
-                <span>Contenu inclus dans l'export ({selectedScope === 'single' ? currentPeriod?.title : 'Les 4 Matchs'})</span>
+                <span>Données incluses ({selectedScope === 'single' ? currentPeriod?.title : 'Les 4 Matchs'})</span>
               </span>
               <span className="text-[11px] font-semibold text-slate-500">
                 {selectedScope === 'single'
                   ? `${t1Starters.length + t2Starters.length} titulaires, ${t1Subs.length + t2Subs.length} remplaçants`
-                  : '4 périodes complètes'}
+                  : '4 périodes complètes • Effectif total'}
               </span>
             </div>
 
@@ -268,15 +356,13 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
               <div className="flex items-start gap-1.5">
                 <span className="text-emerald-600 font-bold">✓</span>
                 <span>
-                  <strong>Évaluations & Notes joueurs :</strong> Notes de 1 à 4 étoiles (★) et remarques de coaching.
+                  <strong>Évaluations & Notes joueurs :</strong> Notes 1 à 4 étoiles (★) et observations individuelles.
                 </span>
               </div>
               <div className="flex items-start gap-1.5">
                 <span className="text-emerald-600 font-bold">✓</span>
                 <span>
-                  <strong>Notes & Consignes tactiques :</strong> {selectedScope === 'single' 
-                    ? (currentPeriod?.notes ? `"${currentPeriod.notes.slice(0, 45)}..."` : 'Observations & consignes de la période') 
-                    : 'Observations spécifiques de chaque match'}
+                  <strong>Effectif & Roster :</strong> {matchData.roster.length} joueurs avec présence et postes de prédilection.
                 </span>
               </div>
             </div>
@@ -288,9 +374,9 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
               2. Format de fichier souhaité
             </label>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
               
-              {/* Option PDF */}
+              {/* Option 1: PDF */}
               <div className="p-4 rounded-xl border border-rose-200 bg-rose-50/30 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1.5">
@@ -305,7 +391,7 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
                     </div>
                   </div>
                   <p className="text-xs text-slate-600 mt-2 mb-4 leading-relaxed">
-                    Mise en page officielle FootEco prête pour l'impression, l'archivage ou l'envoi aux arbitres et responsables.
+                    Mise en page officielle FootEco prête pour l'impression, l'archivage papier ou l'envoi aux arbitres et responsables.
                   </p>
                 </div>
 
@@ -314,17 +400,17 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
                     type="button"
                     onClick={handleExportPdf}
                     disabled={isExportingPdf}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                   >
                     {isExportingPdf ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Génération PDF en cours...</span>
+                        <span>Génération PDF...</span>
                       </>
                     ) : pdfSuccess ? (
                       <>
                         <Check className="w-4 h-4" />
-                        <span>PDF téléchargé avec succès !</span>
+                        <span>PDF téléchargé !</span>
                       </>
                     ) : (
                       <>
@@ -345,7 +431,7 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
                 </div>
               </div>
 
-              {/* Option Excel */}
+              {/* Option 2: Excel */}
               <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1.5">
@@ -355,12 +441,12 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
                     <div>
                       <h4 className="font-extrabold text-sm text-slate-900">Classeur Excel (.xlsx)</h4>
                       <p className="text-[11px] text-slate-500">
-                        {selectedScope === 'single' ? 'Feuille active + Temps de jeu' : 'Classeur complet multi-feuilles'}
+                        {selectedScope === 'single' ? 'Feuille active + Temps de jeu' : 'Classeur complet multi-onglets'}
                       </p>
                     </div>
                   </div>
                   <p className="text-xs text-slate-600 mt-2 mb-4 leading-relaxed">
-                    Tableur complet avec colonnes éditables, statistiques, temps de jeu calculés, effectif et notes tactiques intégrées.
+                    Tableur complet avec colonnes éditables, calcul automatique des temps de jeu, effectif et notes tactiques.
                   </p>
                 </div>
 
@@ -369,22 +455,22 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
                     type="button"
                     onClick={handleExportExcel}
                     disabled={isExportingExcel}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-sm transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-sm transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                   >
                     {isExportingExcel ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Création du fichier Excel...</span>
+                        <span>Création Excel...</span>
                       </>
                     ) : excelSuccess ? (
                       <>
                         <Check className="w-4 h-4" />
-                        <span>Fichier Excel téléchargé !</span>
+                        <span>Excel téléchargé !</span>
                       </>
                     ) : (
                       <>
                         <FileSpreadsheet className="w-4 h-4" />
-                        <span>Télécharger en Excel (.xlsx)</span>
+                        <span>Télécharger en Excel</span>
                       </>
                     )}
                   </button>
@@ -400,6 +486,125 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
                 </div>
               </div>
 
+              {/* Option 3: Sauvegarde JSON Complète */}
+              <div className="p-4 rounded-xl border-2 border-indigo-300 bg-indigo-50/50 flex flex-col justify-between shadow-xs ring-1 ring-indigo-200">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold shadow-2xs">
+                        <FileJson className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-sm text-slate-900">Sauvegarde JSON (.json)</h4>
+                        <p className="text-[11px] text-indigo-700 font-semibold">
+                          100% des données brutes • Importation ultérieure
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <p className="text-xs text-slate-600 mt-2 mb-3 leading-relaxed">
+                    Exporte l'ensemble complet de la rencontre (les 4 périodes, scores, compositions, shootout, évaluations et effectif) dans un fichier JSON standard pour sauvegarde externe ou réimportation.
+                  </p>
+
+                  <div className="bg-white/80 border border-indigo-200/80 rounded-lg p-2 mb-3 text-[11px] text-slate-600 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-700">Format :</span>
+                      <span className="font-mono text-[10px] text-indigo-900 bg-indigo-100/70 px-1.5 py-0.5 rounded">.json (UTF-8)</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-700">Contenu :</span>
+                      <span>{matchData.periods.length} périodes • {matchData.roster.length} joueurs</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleExportJson}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs shadow-sm transition-all active:scale-95 cursor-pointer ring-1 ring-indigo-500"
+                  >
+                    {jsonSuccessInfo ? (
+                      <>
+                        <Check className="w-4 h-4 text-white" />
+                        <span>Fichier JSON téléchargé ({jsonSuccessInfo.sizeKb} Ko) !</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 text-white" />
+                        <span>Télécharger la Sauvegarde JSON</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyJson}
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-white hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-[11px] font-semibold transition-colors cursor-pointer"
+                  >
+                    {jsonCopied ? (
+                      <>
+                        <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-700 font-bold">JSON copié dans le presse-papier !</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-indigo-700" />
+                        <span>Copier le JSON brut</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Section: Restauration / Importation ultérieure depuis JSON */}
+          <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-start gap-2.5">
+              <div className="p-2 rounded-lg bg-indigo-100 text-indigo-700 shrink-0">
+                <Upload className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="font-extrabold text-slate-900 block">
+                  Importer / Restaurer une sauvegarde externe (.json)
+                </span>
+                <span className="text-slate-500 text-[11px] block mt-0.5">
+                  Chargez une sauvegarde JSON précédente pour restaurer instantanément l'ensemble des scores, compositions et notes.
+                </span>
+                {importError && (
+                  <span className="text-rose-600 font-bold text-[11px] flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-3 h-3 shrink-0" />
+                    <span>{importError}</span>
+                  </span>
+                )}
+                {importSuccessMsg && (
+                  <span className="text-emerald-700 font-bold text-[11px] flex items-center gap-1 mt-1">
+                    <Check className="w-3 h-3 shrink-0" />
+                    <span>{importSuccessMsg}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,application/json"
+                onChange={handleFileInputChange}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs shadow-2xs transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+              >
+                <Upload className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Importer un fichier JSON</span>
+              </button>
             </div>
           </div>
 
@@ -409,12 +614,12 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
         <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 bg-slate-50 text-xs text-slate-500">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-            <span>Format conforme Association Suisse de Football (FootEco FE12)</span>
+            <span>Format conforme Association Suisse de Football (FootEco FE12) • Sauvegarde universelle JSON</span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1 text-slate-600 hover:text-slate-900 font-semibold"
+            className="px-3 py-1 text-slate-600 hover:text-slate-900 font-semibold cursor-pointer"
           >
             Fermer
           </button>
@@ -424,3 +629,4 @@ export const ExportMatchModal: React.FC<ExportMatchModalProps> = ({
     </div>
   );
 };
+

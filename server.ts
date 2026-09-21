@@ -3,7 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
-import { generateTailoredSvgFromExercise } from "./src/utils/pitchDiagrams";
+import { generateTailoredSvgFromExercise, extractScenarioIdFromSvg } from "./src/utils/pitchDiagrams";
 import { generateAsfSessionProcedural } from "./src/utils/asfProceduralGenerator";
 
 dotenv.config();
@@ -172,7 +172,7 @@ Tu conçois des fiches de séances d'entraînement officielles FootEco basées s
 3. STRUCTURE DE LA SÉANCE OFFICIELLE FOOTECO (3 PARTIES) :
 - PARTIE INITIALE (Focus TE/KO - Technique & Coordination) : Échauffement dynamique avec ballon, coordination motrice, travail technique ciblé sur le thème. Deux ateliers complémentaires (Dessin 1 & Dessin 2) animés par les 2 entraîneurs.
 - FORMES JOUÉES (Focus TA - Tactique & Situations) : Formes jouées stimulantes en petits groupes (Dessin 1 & Dessin 2) avec cibles, mini-buts, zones ou règles de transition.
-- JEU FINAL (Focus TE/TA - Match d'application) : Match en effectif réduit (6v6 ou 4v4) avec règle pédagogique provocatrice récompensant l'objectif du thème du jour. Préciser l'activité technique des remplaçants.
+- JEU FINAL (Focus TE/TA - Match d'application) : Match officiel FootEco 7 contre 7 (7v7 avec 1 gardien + 6 joueurs de champ sur demi-terrain 50x35m, organisation préconisée 2-3-1 ou 3-2-1) avec règle pédagogique provocatrice récompensant l'objectif du thème du jour. Préciser l'activité technique des remplaçants.
 
 4. INDIVIDUALISATION & BILAN :
 - Repères d'individualisation (différenciation espace/temps, nombre de touches autorisées, devoirs techniques).
@@ -198,8 +198,8 @@ async function startServer() {
         category = "FE12 Bas-Valais",
         phase = "DEF & OFF",
         focusTopic = "",
-        coach = "Sébastien M.",
-        assistantCoach = "Miguel R.",
+        coach = "Miguel R.",
+        assistantCoach = "Sébastien M.",
         season = "2025/2026",
         specificInstructions = "",
         variation = "standard",
@@ -238,7 +238,7 @@ DIRECTIVE CRUCIALE DE RENOUVELLEMENT :
 - Les exercices, le matériel (coupelles, cônes, mini-buts, jalons), les dimensions du terrain et les règles doivent être CONÇUS EXCLUSIVEMENT ET SPÉCIFIQUEMENT pour travailler le thème : "${targetTheme}".
 - Dans la PARTIE INITIALE (TE/KO) : propose 2 ateliers complémentaires distincts (ex: circuit motricité avec passes et enchaînements vifs, dédoublements, vagues de percussion ou frappes selon le thème).
 - Dans les FORMES JOUÉES (TA) : conçois 2 situations jouées stimulantes avec opposition adaptée (ex: supériorités 2v1 / 3v2, jeu avec appuis extérieurs, zones de progression, transitions rapides 3 secondes).
-- Dans le JEU FINAL : propose un match 6v6 avec une règle provocatrice qui récompense directement le thème "${targetTheme}".
+- Dans le JEU FINAL : propose un match d'application officiel FootEco 7 contre 7 (7v7 avec gardiens sur demi-terrain 50x35m) avec une règle provocatrice qui récompense directement le thème "${targetTheme}".
 
 Tu DOIS répondre EXCLUSIVEMENT sous la forme d'un objet JSON strict avec la structure suivante (aucun texte en dehors du JSON) :
 {
@@ -286,12 +286,12 @@ Tu DOIS répondre EXCLUSIVEMENT sous la forme d'un objet JSON strict avec la str
     "title": "Jeu final - Focus TE/TA",
     "focus": "Focus TE/TA",
     "duration": "30 min",
-    "description": "Description du match d'application (6 contre 6 ou 4 contre 4 sur deux terrains) avec règle pédagogique provocatrice liée au thème et activité technique pour les remplaçants.",
-    "drawing1Caption": "Match d'application en lien avec le thème",
+    "description": "Description du match d'application officiel FootEco 7 contre 7 (7v7 avec gardiens sur demi-terrain 50x35m, 14 joueurs au total) avec règle pédagogique provocatrice liée au thème et activité technique pour les remplaçants.",
+    "drawing1Caption": "Match 7 contre 7 FootEco (7v7)",
     "drawing1Coach": "",
     "drawing2Caption": "",
     "drawing2Coach": "",
-    "recommendedPreset1": "preset-game-6v6",
+    "recommendedPreset1": "preset-game-7v7",
     "recommendedPreset2": ""
   },
   "remarksAndIndividualization": "Conseils concrets d'individualisation ASF (adaptation espace/temps, touches de balle, défis pour joueurs avancés)",
@@ -386,6 +386,18 @@ Tu DOIS répondre EXCLUSIVEMENT sous la forme d'un objet JSON strict avec la str
           coach: "",
           theme: generatedJson.title,
         });
+
+        // Synchronize scenarioIds between SVG diagrams and animation engine
+        generatedJson.initialPart.scenarioId = generatedJson.initialPart.scenarioId || extractScenarioIdFromSvg(generatedJson.initialPart.drawing1Svg);
+        generatedJson.initialPart.drawing1ScenarioId = extractScenarioIdFromSvg(generatedJson.initialPart.drawing1Svg);
+        generatedJson.initialPart.drawing2ScenarioId = extractScenarioIdFromSvg(generatedJson.initialPart.drawing2Svg);
+
+        generatedJson.playedForms.scenarioId = generatedJson.playedForms.scenarioId || extractScenarioIdFromSvg(generatedJson.playedForms.drawing1Svg);
+        generatedJson.playedForms.drawing1ScenarioId = extractScenarioIdFromSvg(generatedJson.playedForms.drawing1Svg);
+        generatedJson.playedForms.drawing2ScenarioId = extractScenarioIdFromSvg(generatedJson.playedForms.drawing2Svg);
+
+        generatedJson.finalGame.scenarioId = generatedJson.finalGame.scenarioId || extractScenarioIdFromSvg(generatedJson.finalGame.drawing1Svg) || "scenario-match-7v7";
+        generatedJson.finalGame.drawing1ScenarioId = extractScenarioIdFromSvg(generatedJson.finalGame.drawing1Svg) || "scenario-match-7v7";
       } catch (diagramErr) {
         console.warn("Diagram generation note:", diagramErr);
       }
@@ -405,8 +417,8 @@ Tu DOIS répondre EXCLUSIVEMENT sous la forme d'un objet JSON strict avec la str
         themeDescription = "",
         focus = "TE/KO",
         category = "FE12",
-        coach = "SEB",
-        assistantCoach = "Miguel",
+        coach = "Miguel",
+        assistantCoach = "SEB",
         customPrompt = "",
         variation = "standard",
         regenerationInstructions = "",
@@ -446,7 +458,7 @@ Réponds UNIQUEMENT avec un JSON strict :
   "drawing1Coach": "${coach}",
   "drawing2Caption": "Titre synthétique Atelier 2 en lien avec le thème",
   "drawing2Coach": "${assistantCoach}",
-  "recommendedPreset1": "${partType === 'initialPart' ? 'preset-init-1' : partType === 'playedForms' ? 'preset-form-1' : 'preset-game-6v6'}",
+  "recommendedPreset1": "${partType === 'initialPart' ? 'preset-init-1' : partType === 'playedForms' ? 'preset-form-1' : 'preset-game-7v7'}",
   "recommendedPreset2": "${partType === 'initialPart' ? 'preset-init-2' : partType === 'playedForms' ? 'preset-form-2' : ''}"
 }
 `;
@@ -496,7 +508,7 @@ Réponds UNIQUEMENT avec un JSON strict :
             drawing1Coach: coach,
             drawing2Caption: "Atelier dynamique 2",
             drawing2Coach: assistantCoach,
-            recommendedPreset1: partType === "initialPart" ? "preset-init-1" : partType === "playedForms" ? "preset-form-1" : "preset-game-6v6",
+            recommendedPreset1: partType === "initialPart" ? "preset-init-1" : partType === "playedForms" ? "preset-form-1" : "preset-game-7v7",
             recommendedPreset2: partType === "initialPart" ? "preset-init-2" : partType === "playedForms" ? "preset-form-2" : "",
           };
         }
@@ -521,6 +533,10 @@ Réponds UNIQUEMENT avec un JSON strict :
           coach: generated.drawing2Coach || assistantCoach,
           theme: themeDescription,
         });
+
+        generated.scenarioId = generated.scenarioId || extractScenarioIdFromSvg(generated.drawing1Svg);
+        generated.drawing1ScenarioId = extractScenarioIdFromSvg(generated.drawing1Svg);
+        generated.drawing2ScenarioId = extractScenarioIdFromSvg(generated.drawing2Svg);
       } catch (dErr) {
         console.warn("Part diagram generation error:", dErr);
       }
@@ -558,10 +574,24 @@ Génère un schéma tactique vectoriel SVG complet (viewBox 0 0 400 240) représ
 - Demande spécifique : ${customPrompt || "Schéma clair avec joueurs, cibles et flèches de trajectoire"}
 
 CONSIGNES STRICTES POUR LE CODE SVG :
-1. Renvoie UNIQUEMENT le code SVG débutant par <svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded"> et finissant par </svg>.
-2. Pas de texte avant ou après, pas de balises markdown de type \`\`\`xml ou \`\`\`svg.
-3. Inclus des définitions graphiques : dégradé herbe verte (grassGrad), ciel (skyGrad), lignes blanches, marqueurs de flèches (arrowPass, arrowYellow).
-4. Représente fidèlement les consignes :
+1. Renvoie UNIQUEMENT le code SVG débutant par <svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded" data-scenario-id="..."> et finissant par </svg>.
+2. Choisi pour l'attribut data-scenario-id l'identifiant correspondant le mieux parmi cette liste :
+   - "scenario-duel-1v1" (1c1, duel, feinte, crochet)
+   - "scenario-slalom-frappe" (slalom, piquets, motricité, conduite)
+   - "scenario-vagues-2v1" (2c1 en vagues, 4 zones, supériorité)
+   - "scenario-transition-3v2" (transition 3s, 3c2, contre-attaque)
+   - "scenario-possession-3v3-jokers" (possession, conservation, jokers, stop-ball)
+   - "scenario-rondo-4v2" (rondo 4c2, taureau, conservation courte)
+   - "scenario-tirs-enchaines-finition" (tirs enchaînés, pivot, frappe au but)
+   - "scenario-centres-finition" (centres, débordement, reprise)
+   - "scenario-dedoublement-passes" (dédoublement, une-deux, appui-soutien)
+   - "scenario-pressing-recuperation" (pressing, bloc haut, interception)
+   - "scenario-cadrage-defense" (cadrage défensif, recul-frein)
+   - "scenario-circuit-passes-appui" (circuit de passes, losange, passes courtes)
+   - "scenario-match-6v6" (match 7c7 ou 6c6 FootEco)
+3. Pas de texte avant ou après, pas de balises markdown de type \`\`\`xml ou \`\`\`svg.
+4. Inclus des définitions graphiques : dégradé herbe verte (grassGrad), ciel (skyGrad), lignes blanches, marqueurs de flèches (arrowPass, arrowYellow).
+5. Représente fidèlement les consignes :
    - Zone de jeu verte ou couloir délimité.
    - Joueurs attaquants bleus (#2563eb avec bordure blanche), défenseurs rouges (#ef4444), jokers jaunes (#f59e0b), gardien vert (#10b981).
    - Matériel d'entraînement : cônes/coupelles (orange/jaune), piquets de slalom verticaux si motricité, mini-buts ou grand but.
@@ -593,7 +623,7 @@ CONSIGNES STRICTES POUR LE CODE SVG :
       if (!generatedSvg) {
         generatedSvg = generateTailoredSvgFromExercise({
           title: exerciseTitle,
-          description: `${description} ${customPrompt}`,
+          description: `${description} ${customPrompt || ''}`,
           slotName,
           partType,
           coach,
@@ -601,7 +631,28 @@ CONSIGNES STRICTES POUR LE CODE SVG :
         });
       }
 
-      return res.json({ success: true, svg: generatedSvg });
+      // Ensure data-scenario-id is present in the SVG tag
+      let scenarioId = extractScenarioIdFromSvg(generatedSvg);
+      if (!scenarioId) {
+        const fullTxt = `${exerciseTitle} ${description} ${theme}`.toLowerCase();
+        if (fullTxt.includes('7v7') || fullTxt.includes('match') || partType === 'finalGame') scenarioId = 'scenario-match-6v6';
+        else if (fullTxt.includes('2v1') || fullTxt.includes('2c1')) scenarioId = 'scenario-vagues-2v1';
+        else if (fullTxt.includes('3v2') || fullTxt.includes('3c2')) scenarioId = 'scenario-transition-3v2';
+        else if (fullTxt.includes('slalom') || fullTxt.includes('motricité')) scenarioId = 'scenario-slalom-frappe';
+        else if (fullTxt.includes('rondo') || fullTxt.includes('4v2')) scenarioId = 'scenario-rondo-4v2';
+        else if (fullTxt.includes('possession') || fullTxt.includes('joker')) scenarioId = 'scenario-possession-3v3-jokers';
+        else if (fullTxt.includes('centre') || fullTxt.includes('débord')) scenarioId = 'scenario-centres-finition';
+        else if (fullTxt.includes('tir') || fullTxt.includes('frappe')) scenarioId = 'scenario-tirs-enchaines-finition';
+        else if (fullTxt.includes('pressing') || fullTxt.includes('récupér')) scenarioId = 'scenario-pressing-recuperation';
+        else if (fullTxt.includes('circuit') || fullTxt.includes('losange')) scenarioId = 'scenario-circuit-passes-appui';
+        else scenarioId = 'scenario-duel-1v1';
+      }
+
+      if (!generatedSvg.includes('data-scenario-id=')) {
+        generatedSvg = generatedSvg.replace(/<svg\b/i, `<svg data-scenario-id="${scenarioId}" `);
+      }
+
+      return res.json({ success: true, svg: generatedSvg, scenarioId });
     } catch (err: any) {
       console.error("Error in generate-drill-diagram:", err);
       res.status(500).json({ error: err.message || "Erreur lors de la génération du schéma" });

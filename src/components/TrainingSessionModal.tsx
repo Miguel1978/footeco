@@ -48,6 +48,9 @@ import { PrintableTrainingSheet } from './PrintableTrainingSheet';
 import { CoachAutocompleteInput } from './CoachAutocompleteInput';
 import { AITrainingGeneratorModal } from './AITrainingGeneratorModal';
 import { ExerciseAnimationModal } from './ExerciseAnimationModal';
+import { FormattedDrillDescription } from './FormattedDrillDescription';
+import { splitDrillDescription, combineDrillDescription } from '../utils/drillDescription';
+import { extractDrillSlotText } from '../utils/drillAnimations';
 import { refineThemeWithAI, generateExercisePartWithAI, generateDrillDiagramWithAI } from '../utils/aiTrainingGenerator';
 
 interface TrainingSessionModalProps {
@@ -55,6 +58,7 @@ interface TrainingSessionModalProps {
   onClose: () => void;
   initialSessionId?: string;
   defaultSeason?: string;
+  isEmbedded?: boolean;
 }
 
 export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
@@ -62,6 +66,7 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
   onClose,
   initialSessionId,
   defaultSeason,
+  isEmbedded = false,
 }) => {
   const [sessions, setSessions] = useState<TrainingSession[]>(() => loadTrainingSessions());
   const [activeView, setActiveView] = useState<'list' | 'editor' | 'preview'>('list');
@@ -152,9 +157,9 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
     }
   };
 
-  // Reload sessions when opening
+  // Reload sessions when opening or when embedded mode mounts
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen || isEmbedded) {
       const loaded = loadTrainingSessions();
       setSessions(loaded);
       if (initialSessionId) {
@@ -165,9 +170,9 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
         }
       }
     }
-  }, [isOpen, initialSessionId]);
+  }, [isOpen, isEmbedded, initialSessionId]);
 
-  if (!isOpen) return null;
+  if (!isOpen && !isEmbedded) return null;
 
   const sessionKeywordsList = [
     { id: 'all', label: 'Tous', icon: '🌟' },
@@ -552,8 +557,8 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
         themeDescription: `${currentSession.title} - TE: ${currentSession.themeTE?.description} - TA: ${currentSession.themeTA?.description}`,
         focus: partKey === 'initialPart' ? 'TE/KO' : partKey === 'playedForms' ? 'TA' : 'TE/TA',
         category: currentSession.team,
-        coach: currentSession.coach?.split(' ')[0] || 'SEB',
-        assistantCoach: currentSession.assistantCoach?.split(' ')[0] || 'Miguel',
+        coach: currentSession.coach?.split(' ')[0] || 'Miguel',
+        assistantCoach: currentSession.assistantCoach?.split(' ')[0] || 'SEB',
       });
 
       setCurrentSession({
@@ -590,12 +595,10 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-slate-100 rounded-2xl shadow-2xl border border-slate-300 w-full max-w-5xl h-[94vh] flex flex-col overflow-hidden text-slate-800">
-        
-        {/* Top Navigation Bar */}
-        <div className="bg-slate-900 text-white px-6 py-3.5 flex items-center justify-between shadow-md">
+  const modalInnerContent = (
+    <div className={`bg-slate-100 rounded-2xl shadow-xl border border-slate-300 w-full ${isEmbedded ? 'min-h-[84vh]' : 'max-w-5xl h-[94vh]'} flex flex-col overflow-hidden text-slate-800`}>
+      {/* Top Navigation Bar */}
+      <div className="bg-slate-900 text-white px-6 py-3.5 flex items-center justify-between shadow-md">
           <div className="flex items-center gap-3">
             {activeView !== 'list' ? (
               <button
@@ -935,7 +938,7 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
                           <User className="w-3.5 h-3.5 text-slate-400" />
                           <span>Responsable :</span>
                           <span className="font-bold text-slate-800">
-                            {session.coach || 'Sébastien M.'}
+                            {session.coach || 'Miguel R.'}
                           </span>
                           {session.assistantCoach && (
                             <span className="text-slate-500">({session.assistantCoach})</span>
@@ -1071,7 +1074,7 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
             
             {/* 1. Header Information Panel */}
             <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Catégorie / Équipe</label>
                   <input
@@ -1120,6 +1123,16 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
                   <CoachAutocompleteInput
                     value={currentSession.coach}
                     onChange={(val) => setCurrentSession({ ...currentSession, coach: val })}
+                    placeholder="Miguel R."
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold focus:bg-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Entraîneur adjoint</label>
+                  <CoachAutocompleteInput
+                    value={currentSession.assistantCoach || ''}
+                    onChange={(val) => setCurrentSession({ ...currentSession, assistantCoach: val })}
                     placeholder="Sébastien M."
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold focus:bg-white focus:outline-none focus:border-emerald-500"
                   />
@@ -1327,6 +1340,8 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
               badgeColor="bg-emerald-100 text-emerald-900 border-emerald-300"
               isGenerating={isGeneratingPart === 'initialPart'}
               generatingSlotKey={generatingSlotKey}
+              defaultCoach={currentSession.coach}
+              defaultAssistantCoach={currentSession.assistantCoach}
               onGenerateAI={() => handleGeneratePartAI('initialPart')}
               onGenerateDiagramAI={(slot) => handleGenerateSlotDiagramAI('initialPart', slot)}
               onOpenAnimation={(slot) => handleOpenAnimation(currentSession.initialPart.title, currentSession.initialPart.description, currentSession.themeTE?.description || '', slot, 'initialPart')}
@@ -1341,6 +1356,8 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
               badgeColor="bg-blue-100 text-blue-900 border-blue-300"
               isGenerating={isGeneratingPart === 'playedForms'}
               generatingSlotKey={generatingSlotKey}
+              defaultCoach={currentSession.coach}
+              defaultAssistantCoach={currentSession.assistantCoach}
               onGenerateAI={() => handleGeneratePartAI('playedForms')}
               onGenerateDiagramAI={(slot) => handleGenerateSlotDiagramAI('playedForms', slot)}
               onOpenAnimation={(slot) => handleOpenAnimation(currentSession.playedForms.title, currentSession.playedForms.description, currentSession.themeTA?.description || '', slot, 'playedForms')}
@@ -1355,6 +1372,8 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
               badgeColor="bg-indigo-100 text-indigo-900 border-indigo-300"
               isGenerating={isGeneratingPart === 'finalGame'}
               generatingSlotKey={generatingSlotKey}
+              defaultCoach={currentSession.coach}
+              defaultAssistantCoach={currentSession.assistantCoach}
               onGenerateAI={() => handleGeneratePartAI('finalGame')}
               onGenerateDiagramAI={(slot) => handleGenerateSlotDiagramAI('finalGame', slot)}
               onOpenAnimation={(slot) => handleOpenAnimation(currentSession.finalGame.title, currentSession.finalGame.description, currentSession.themeTE?.description || '', slot, 'finalGame')}
@@ -1442,7 +1461,10 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
         )}
 
       </div>
+    );
 
+  const renderSecondaryModals = () => (
+    <>
       {/* Tactical Canvas / Presets Picker Modal */}
       {tacticalModalState.isOpen && (
         <PitchTacticalCanvasModal
@@ -1465,8 +1487,8 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
         isOpen={isAiModalOpen}
         onClose={() => setIsAiModalOpen(false)}
         onApplySession={handleApplyAiSession}
-        defaultCoach={currentSession?.coach || 'Sébastien M.'}
-        defaultAssistantCoach={currentSession?.assistantCoach || 'Miguel R.'}
+        defaultCoach={currentSession?.coach || 'Miguel R.'}
+        defaultAssistantCoach={currentSession?.assistantCoach || 'Sébastien M.'}
         defaultCategory={currentSession?.team || 'FE12'}
         defaultSeason={currentSession?.season || (selectedSeasonFilter !== 'all' ? selectedSeasonFilter : '2025/2026')}
       />
@@ -1485,7 +1507,22 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
           onSaveScenario={handleSaveAnimationScenario}
         />
       )}
+    </>
+  );
 
+  if (isEmbedded) {
+    return (
+      <div className="w-full space-y-4 animate-in fade-in duration-200">
+        {modalInnerContent}
+        {renderSecondaryModals()}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-xs animate-in fade-in duration-200">
+      {modalInnerContent}
+      {renderSecondaryModals()}
     </div>
   );
 };
@@ -1493,12 +1530,67 @@ export const TrainingSessionModal: React.FC<TrainingSessionModalProps> = ({
 // -------------------------------------------------------------------
 // Sub-component: Exercise Part Editor (Initial Part, Played Forms, Final Game)
 // -------------------------------------------------------------------
+const PLAYED_FORMS_FOOTECO_PRESETS = [
+  {
+    title: '3c2 Décalage & 4c3 Intervalle',
+    tag: 'Attaque / Supériorité',
+    d1Caption: '3 contre 2 avec décalage rapide',
+    d1Coach: 'Miguel R.',
+    d1Text: `Situation 3 contre 2 + gardien sur demi-terrain.\nLes 3 attaquants fixent le défenseur central pour créer un décalage rapide vers l'ailier libre à l'opposé.\n\nRègles :\n- Finition obligatoire en moins de 6 secondes dès l'entrée dans les 16 mètres.\n- 1 point par but marqué, 2 points si frappe en une touche.\n\nVariantes :\n- Ajouter un repli défensif d'un 3e défenseur après 3 secondes.\n\nCoaching :\n- Fixer avant de donner, orienter le corps vers le but adverse.`,
+    d2Caption: '4 contre 3 avec passe dans l\'intervalle clé',
+    d2Coach: 'Sébastien M.',
+    d2Text: `Forme jouée 4 contre 3 avec zone intermédiaire protégée.\nL'objectif est de trouver l'attaquant de pointe par une passe au sol qui traverse la ligne défensive médiane.\n\nRègles :\n- 2 touches de balle obligatoires dans l'intervalle central.\n- But valable uniquement si précédé d'une passe traversante.\n\nVariantes :\n- Jeu libre dès que le ballon a franchi l'intervalle.\n\nCoaching :\n- Déplacements synchronisés : appui court / appel en profondeur.`,
+  },
+  {
+    title: '1c1 en 4 zones & 2c1 en vagues',
+    tag: 'Duels & Percussion',
+    d1Caption: '1c1 en 4 zones délimitées',
+    d1Coach: 'Miguel R.',
+    d1Text: `Forme jouée 1 contre 1 dans 4 couloirs parallèles avec 2 mini-buts opposés.\nChaque joueur doit éliminer son vis-à-vis pour marquer.\n\nRègles :\n- 8 secondes maximum par duel.\n- Feinte ou changement de rythme obligatoire avant la frappe.\n\nCoaching :\n- Accélération explosive dès le déséquilibre créé, feinte de corps nette.`,
+    d2Caption: '2 contre 1 en vagues offensives',
+    d2Coach: 'Sébastien M.',
+    d2Text: `Situation 2 contre 1 en transition rapide sur grand but avec gardien.\nDépart alterné des côtés gauche et droit.\n\nRègles :\n- 5 secondes chrono pour conclure.\n- Le défenseur marque dans 2 mini-buts s'il récupère le ballon.\n\nCoaching :\n- Conduite agressive vers le défenseur pour l'obliger à faire un choix.`,
+  },
+  {
+    title: 'Double Carré 4c2 & Transition 3c2',
+    tag: 'Transitions & Récupération',
+    d1Caption: 'Double carré de conservation 4c2',
+    d1Coach: 'Miguel R.',
+    d1Text: `Rondo 4 contre 2 en deux carrés contigus de 12x12m.\nDès récupération, les 2 chasseurs transmettent dans le 2e carré et rejoignent leurs partenaires.\n\nRègles :\n- 6 passes consécutives = 1 point pour l'équipe en possession.\n\nCoaching :\n- Qualité de première touche et disponibilité du joueur de soutien.`,
+    d2Caption: '3 contre 2 de transition rapide',
+    d2Coach: 'Sébastien M.',
+    d2Text: `Situation de contre-attaque 3 contre 2 consécutive à une perte de balle simulée.\n\nRègles :\n- Repli défensif immédiat (règle des 3 secondes FootEco).\n- Finition rapide au premier ou deuxième poteau.\n\nCoaching :\n- Vitesse de réaction mentale et communication défensive.`,
+  },
+  {
+    title: 'Sortie de balle 4c3 & Rondo 5c3',
+    tag: 'Construction basse & Pressing',
+    d1Caption: 'Sortie de balle 4c3 + Gardien',
+    d1Coach: 'Miguel R.',
+    d1Text: `Sortie de balle depuis les 16m : 4 défenseurs + 1 gardien face à 3 attaquants presseurs.\nObjectif : franchir la ligne médiane par la passe ou la conduite.\n\nRègles :\n- Le gardien joue en 2 touches max.\n- Si les presseurs récupèrent, tir direct autorisé.\n\nCoaching :\n- Écarter les défenseurs centraux, offrir deux solutions diagonales.`,
+    d2Caption: 'Rondo 5 contre 3 en progression',
+    d2Coach: 'Sébastien M.',
+    d2Text: `Conservation 5 contre 3 dans un rectangle 20x15m orienté.\nObjectif : trouver le joueur libre entre les lignes de pressing adverse.\n\nRègles :\n- 2 touches de balle max pour tous les joueurs.\n\nCoaching :\n- Prise d'information avant la réception (scanner le terrain).`,
+  },
+  {
+    title: 'Finitions 3c2 (5s) & Tirs 2v2 1-touche',
+    tag: 'Zone de vérité & Tirs rapides',
+    d1Caption: '3c2 avec compte à rebours 5s',
+    d1Coach: 'Miguel R.',
+    d1Text: `3 contre 2 en zone de finition : obligation de frapper dans les 5 secondes suivant l'entrée dans la zone des 16m.\n\nRègles :\n- 2 touches max avant la frappe.\n- 1 point par but, 2 points si frappe au sol petit filet.\n\nCoaching :\n- Prise de décision rapide, frappe cadrée au sol.`,
+    d2Caption: 'Duel de frappes 2v2 + 2 appuis',
+    d2Coach: 'Sébastien M.',
+    d2Text: `Duel de frappes 2v2 + 2 appuis latéraux avec tirs obligatoires en une touche de balle sur service de l'appui.\n\nRègles :\n- Tout tir hors-cadre = possession immédiate à l'adversaire.\n\nCoaching :\n- Orientation du pied d'appui et verrouillage de la cheville.`,
+  }
+];
+
 interface ExercisePartEditorProps {
   partKey: string;
   part: TrainingExercisePart;
   badgeColor: string;
   isGenerating?: boolean;
   generatingSlotKey?: string | null;
+  defaultCoach?: string;
+  defaultAssistantCoach?: string;
   onGenerateAI?: () => void;
   onGenerateDiagramAI?: (slot: 'Dessin 1' | 'Dessin 2') => void;
   onOpenAnimation?: (slot?: 'Dessin 1' | 'Dessin 2' | 'Complet') => void;
@@ -1512,12 +1604,86 @@ const ExercisePartEditor: React.FC<ExercisePartEditorProps> = ({
   badgeColor,
   isGenerating = false,
   generatingSlotKey = null,
+  defaultCoach = 'Miguel R.',
+  defaultAssistantCoach = 'Sébastien M.',
   onGenerateAI,
   onGenerateDiagramAI,
   onOpenAnimation,
   onChange,
   onOpenDiagram,
 }) => {
+  // Default to the dedicated 'ateliers-split' view so Dessin 1 and Dessin 2 are immediately visible and editable with their descriptions
+  const [descViewMode, setDescViewMode] = useState<'ateliers-split' | 'formatted' | 'edit-raw'>('ateliers-split');
+
+  const parsed = splitDrillDescription(
+    part.description || '',
+    part.drawing1?.caption,
+    part.drawing2?.caption,
+    part.drawing1?.coach || defaultCoach,
+    part.drawing2?.coach || defaultAssistantCoach
+  );
+
+  const slot1Text = parsed.atelier1?.rawText || extractDrillSlotText(part.description, 'Dessin 1') || '';
+  const slot2Text = parsed.atelier2?.rawText || extractDrillSlotText(part.description, 'Dessin 2') || '';
+
+  const handleUpdateSlotText = (slot: 'Dessin 1' | 'Dessin 2', newText: string) => {
+    const s1 = slot === 'Dessin 1' ? newText : slot1Text;
+    const s2 = slot === 'Dessin 2' ? newText : slot2Text;
+    const combined = combineDrillDescription(s1, s2);
+    onChange({ ...part, description: combined });
+  };
+
+  const handleInsertHelperPrompt = (slot: 'Dessin 1' | 'Dessin 2', promptType: 'regles' | 'variantes' | 'coaching') => {
+    const current = slot === 'Dessin 1' ? slot1Text : slot2Text;
+    let snippet = '';
+    if (promptType === 'regles') {
+      snippet = '\n\nRègles :\n- 2 touches de balle obligatoires.\n- Finition en moins de 6 secondes.';
+    } else if (promptType === 'variantes') {
+      snippet = '\n\nVariantes :\n- Ajouter un repli défensif après 3 secondes.\n- Agrandir/réduire l\'espace de jeu.';
+    } else if (promptType === 'coaching') {
+      snippet = '\n\nCoaching :\n- Fixer l\'adversaire avant de donner.\n- Prise d\'information avant la réception.';
+    }
+    handleUpdateSlotText(slot, (current + snippet).trim());
+  };
+
+  const handleApplyPreset = (preset: typeof PLAYED_FORMS_FOOTECO_PRESETS[0]) => {
+    const combined = combineDrillDescription(preset.d1Text, preset.d2Text);
+    onChange({
+      ...part,
+      description: combined,
+      drawing1: {
+        ...part.drawing1,
+        caption: preset.d1Caption,
+        coach: part.drawing1?.coach || preset.d1Coach || defaultCoach,
+      },
+      drawing2: {
+        ...part.drawing2,
+        caption: preset.d2Caption,
+        coach: part.drawing2?.coach || preset.d2Coach || defaultAssistantCoach,
+      }
+    });
+  };
+
+  const handleUpdateDrawing = (slot: 'Dessin 1' | 'Dessin 2', updates: Partial<TrainingDrawing>) => {
+    if (slot === 'Dessin 1') {
+      onChange({
+        ...part,
+        drawing1: {
+          ...part.drawing1,
+          ...updates
+        }
+      });
+    } else {
+      onChange({
+        ...part,
+        drawing2: {
+          ...part.drawing2,
+          ...updates
+        }
+      });
+    }
+  };
+
   const renderDrawingBox = (
     drawing: TrainingDrawing,
     slotName: 'Dessin 1' | 'Dessin 2'
@@ -1526,7 +1692,7 @@ const ExercisePartEditor: React.FC<ExercisePartEditorProps> = ({
     const isSlotGenerating = generatingSlotKey === `${partKey}-${slotName}`;
 
     return (
-      <div className="flex-1 bg-slate-50 rounded-xl border border-slate-200 p-2.5 flex flex-col justify-between">
+      <div className="bg-slate-50 rounded-xl border border-slate-200 p-2.5 flex flex-col justify-between">
         <div className="flex items-center justify-between mb-1.5 gap-1">
           <span className="text-[11px] font-extrabold text-slate-700">{slotName}</span>
           <div className="flex items-center gap-1">
@@ -1666,26 +1832,306 @@ const ExercisePartEditor: React.FC<ExercisePartEditorProps> = ({
         </div>
       </div>
 
-      {/* Grid: Description on Left, 2 Drawings on Right */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-5 flex flex-col">
-          <label className="block font-bold text-xs text-slate-700 mb-1">
-            Description détaillée des ateliers :
-          </label>
-          <textarea
-            rows={6}
-            value={part.description}
-            onChange={(e) => onChange({ ...part, description: e.target.value })}
-            placeholder="Dessin 1 = Duel 1 contre 1...&#10;Dessin 2 = Duel 1 contre 1..."
-            className="w-full flex-1 bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-medium focus:bg-white focus:outline-none focus:border-emerald-500 leading-relaxed resize-none"
-          />
+      {/* Preset suggestions for Formes Jouées (Focus TA) */}
+      {partKey === 'playedForms' && (
+        <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-2.5 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-extrabold text-blue-900 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              Exemples FootEco ASF pour Formes Jouées (Dessin 1 & Dessin 2) :
+            </span>
+            <span className="text-[10px] text-blue-700 font-medium">1 clic pour appliquer Dessin 1 + Dessin 2</span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {PLAYED_FORMS_FOOTECO_PRESETS.map((preset, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleApplyPreset(preset)}
+                className="px-2.5 py-1 bg-white hover:bg-blue-600 hover:text-white text-blue-900 border border-blue-200 rounded-lg text-[11px] font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1 group"
+                title={`${preset.tag} : ${preset.d1Caption} + ${preset.d2Caption}`}
+              >
+                <span>{preset.title}</span>
+                <span className="text-[9px] bg-blue-100 group-hover:bg-blue-800 text-blue-700 group-hover:text-blue-100 px-1 py-0.2 rounded font-medium">
+                  {preset.tag}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* View Mode Switcher */}
+      <div className="flex items-center justify-between gap-2 flex-wrap border-b border-slate-100 pb-2">
+        <div className="flex items-center gap-2">
+          <span className="font-black text-xs text-slate-800">
+            Disposition des Ateliers & Descriptions :
+          </span>
+          <span className="text-[10px] text-slate-500 font-medium hidden sm:inline">
+            (Dessin 1 = Atelier 1 • Dessin 2 = Atelier 2)
+          </span>
         </div>
 
-        <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {renderDrawingBox(part.drawing1, 'Dessin 1')}
-          {renderDrawingBox(part.drawing2, 'Dessin 2')}
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <button
+            type="button"
+            onClick={() => setDescViewMode('ateliers-split')}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all cursor-pointer flex items-center gap-1 ${
+              descViewMode === 'ateliers-split'
+                ? 'bg-slate-900 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+            }`}
+            title="Édition directe côte-à-côte : chaque dessin avec sa propre description"
+          >
+            <span>👥 2 Ateliers (Dessin 1 & 2)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDescViewMode('formatted')}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all cursor-pointer flex items-center gap-1 ${
+              descViewMode === 'formatted'
+                ? 'bg-slate-900 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+            }`}
+            title="Aperçu synthèse selon la feuille de séance officielle"
+          >
+            <span>✨ Aperçu Synthèse</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDescViewMode('edit-raw')}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all cursor-pointer flex items-center gap-1 ${
+              descViewMode === 'edit-raw'
+                ? 'bg-slate-700 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+            }`}
+            title="Édition texte brut intégral"
+          >
+            <span>✏️ Texte Brut</span>
+          </button>
         </div>
       </div>
+
+      {/* MODE 1: ATELIERS SPLIT (Dessin 1 & Dessin 2 side-by-side with dedicated descriptions) */}
+      {descViewMode === 'ateliers-split' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          
+          {/* ATELIER 1 / DESSIN 1 CARD */}
+          <div className="bg-gradient-to-b from-red-50/40 to-white border-2 border-red-200 rounded-2xl p-4 shadow-2xs space-y-3">
+            {/* Header */}
+            <div className="flex items-center justify-between gap-2 border-b border-red-100 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-xs font-black">1</span>
+                <span className="font-extrabold text-sm text-red-900">Atelier 1 (Dessin 1)</span>
+              </div>
+              
+              {/* Coach selector/input */}
+              <div className="flex items-center gap-1 text-[11px]">
+                <span className="font-bold text-slate-500">Coach :</span>
+                <input
+                  type="text"
+                  value={part.drawing1?.coach || defaultCoach}
+                  onChange={(e) => handleUpdateDrawing('Dessin 1', { coach: e.target.value })}
+                  placeholder={defaultCoach}
+                  className="bg-white border border-red-300 rounded-lg px-2 py-0.5 text-[11px] font-extrabold text-red-900 w-28 focus:outline-none focus:ring-1 focus:ring-red-400"
+                />
+              </div>
+            </div>
+
+            {/* Subtitle / Caption */}
+            <div>
+              <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">
+                Titre / Thème spécifique Dessin 1 :
+              </label>
+              <input
+                type="text"
+                value={part.drawing1?.caption || ''}
+                onChange={(e) => handleUpdateDrawing('Dessin 1', { caption: e.target.value })}
+                placeholder="Ex: 3 contre 2 avec fixation et décalage rapide"
+                className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-red-400"
+              />
+            </div>
+
+            {/* Tactical Diagram Preview & Buttons */}
+            {renderDrawingBox(part.drawing1, 'Dessin 1')}
+
+            {/* Dedicated Description for Dessin 1 */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between gap-1 flex-wrap">
+                <label className="block text-[11px] font-black text-red-900 flex items-center gap-1">
+                  <span>📝 Description & Consignes (Dessin 1) :</span>
+                </label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleInsertHelperPrompt('Dessin 1', 'regles')}
+                    className="text-[9px] font-bold bg-white hover:bg-red-100 text-red-800 border border-red-200 px-1.5 py-0.5 rounded cursor-pointer"
+                  >
+                    + Règles
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertHelperPrompt('Dessin 1', 'variantes')}
+                    className="text-[9px] font-bold bg-white hover:bg-red-100 text-red-800 border border-red-200 px-1.5 py-0.5 rounded cursor-pointer"
+                  >
+                    + Variantes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertHelperPrompt('Dessin 1', 'coaching')}
+                    className="text-[9px] font-bold bg-white hover:bg-red-100 text-red-800 border border-red-200 px-1.5 py-0.5 rounded cursor-pointer"
+                  >
+                    + Coaching
+                  </button>
+                </div>
+              </div>
+              <textarea
+                rows={7}
+                value={slot1Text}
+                onChange={(e) => handleUpdateSlotText('Dessin 1', e.target.value)}
+                placeholder="Consignes détaillées pour le Dessin 1 : organisation, règles, variantes et points clés..."
+                className="w-full bg-white border border-red-300 rounded-xl p-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-red-400 leading-relaxed resize-none shadow-2xs"
+              />
+            </div>
+          </div>
+
+          {/* ATELIER 2 / DESSIN 2 CARD */}
+          <div className="bg-gradient-to-b from-blue-50/40 to-white border-2 border-blue-200 rounded-2xl p-4 shadow-2xs space-y-3">
+            {/* Header */}
+            <div className="flex items-center justify-between gap-2 border-b border-blue-100 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black">2</span>
+                <span className="font-extrabold text-sm text-blue-900">Atelier 2 (Dessin 2)</span>
+              </div>
+
+              {/* Coach selector/input */}
+              <div className="flex items-center gap-1 text-[11px]">
+                <span className="font-bold text-slate-500">Coach :</span>
+                <input
+                  type="text"
+                  value={part.drawing2?.coach || defaultAssistantCoach}
+                  onChange={(e) => handleUpdateDrawing('Dessin 2', { coach: e.target.value })}
+                  placeholder={defaultAssistantCoach}
+                  className="bg-white border border-blue-300 rounded-lg px-2 py-0.5 text-[11px] font-extrabold text-blue-900 w-28 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+              </div>
+            </div>
+
+            {/* Subtitle / Caption */}
+            <div>
+              <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">
+                Titre / Thème spécifique Dessin 2 :
+              </label>
+              <input
+                type="text"
+                value={part.drawing2?.caption || ''}
+                onChange={(e) => handleUpdateDrawing('Dessin 2', { caption: e.target.value })}
+                placeholder="Ex: 4 contre 3 avec zone intermédiaire protégée"
+                className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-400"
+              />
+            </div>
+
+            {/* Tactical Diagram Preview & Buttons */}
+            {renderDrawingBox(part.drawing2, 'Dessin 2')}
+
+            {/* Dedicated Description for Dessin 2 */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between gap-1 flex-wrap">
+                <label className="block text-[11px] font-black text-blue-900 flex items-center gap-1">
+                  <span>📝 Description & Consignes (Dessin 2) :</span>
+                </label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleInsertHelperPrompt('Dessin 2', 'regles')}
+                    className="text-[9px] font-bold bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded cursor-pointer"
+                  >
+                    + Règles
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertHelperPrompt('Dessin 2', 'variantes')}
+                    className="text-[9px] font-bold bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded cursor-pointer"
+                  >
+                    + Variantes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertHelperPrompt('Dessin 2', 'coaching')}
+                    className="text-[9px] font-bold bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded cursor-pointer"
+                  >
+                    + Coaching
+                  </button>
+                </div>
+              </div>
+              <textarea
+                rows={7}
+                value={slot2Text}
+                onChange={(e) => handleUpdateSlotText('Dessin 2', e.target.value)}
+                placeholder="Consignes détaillées pour le Dessin 2 : organisation, règles, variantes et points clés..."
+                className="w-full bg-white border border-blue-300 rounded-xl p-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-400 leading-relaxed resize-none shadow-2xs"
+              />
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* MODE 2: FORMATTED SYNTHESIS VIEW (Classic FootEco card overview) */}
+      {descViewMode === 'formatted' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <div className="lg:col-span-6 space-y-2">
+            <div className="max-h-[380px] overflow-y-auto pr-1">
+              <FormattedDrillDescription
+                description={part.description}
+                drawing1Caption={part.drawing1?.caption}
+                drawing2Caption={part.drawing2?.caption}
+                drawing1Coach={part.drawing1?.coach || defaultCoach}
+                drawing2Coach={part.drawing2?.coach || defaultAssistantCoach}
+              />
+            </div>
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setDescViewMode('ateliers-split')}
+                className="text-[11px] font-bold text-blue-700 hover:underline cursor-pointer flex items-center gap-1"
+              >
+                <span>✏️ Modifier Dessin 1 et Dessin 2 dans la vue 2 Ateliers</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {renderDrawingBox(part.drawing1, 'Dessin 1')}
+            {renderDrawingBox(part.drawing2, 'Dessin 2')}
+          </div>
+        </div>
+      )}
+
+      {/* MODE 3: RAW TEXT VIEW (For pasting and full editing) */}
+      {descViewMode === 'edit-raw' && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span>Texte brut complet (les marqueurs &quot;Dessin 1 :&quot; et &quot;Dessin 2 :&quot; sont automatiquement synchronisés avec les deux ateliers) :</span>
+            <button
+              type="button"
+              onClick={() => setDescViewMode('ateliers-split')}
+              className="px-2.5 py-1 bg-slate-900 text-white text-[10px] font-extrabold rounded-lg cursor-pointer"
+            >
+              Terminer & Revenir à la vue 2 Ateliers
+            </button>
+          </div>
+          <textarea
+            rows={10}
+            value={part.description}
+            onChange={(e) => onChange({ ...part, description: e.target.value })}
+            placeholder="📍 Atelier 1 (Dessin 1) :&#10;...&#10;&#10;📍 Atelier 2 (Dessin 2) :&#10;..."
+            className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-medium focus:bg-white focus:outline-none focus:border-emerald-500 leading-relaxed resize-none"
+          />
+        </div>
+      )}
     </div>
   );
 };

@@ -79,7 +79,7 @@ export const PitchTacticalCanvasModal: React.FC<PitchTacticalCanvasModalProps> =
     { id: 'passe', label: 'Passe & Rondo', icon: '🎯' },
     { id: 'tir', label: 'Tir & Finition', icon: '🥅' },
     { id: 'pressing', label: 'Pressing', icon: '🛡️' },
-    { id: '6v6', label: 'Match 6v6', icon: '🏆' },
+    { id: '7v7', label: 'Match 7v7', icon: '🏆' },
   ];
 
   // Filtered Presets with keyword aliases
@@ -101,6 +101,15 @@ export const PitchTacticalCanvasModal: React.FC<PitchTacticalCanvasModalProps> =
             preset.description.toLowerCase().includes('1c1') ||
             preset.description.toLowerCase().includes('1 contre 1');
           if (!matches1v1) return false;
+        } else if (tag === '7v7') {
+          const matches7v7 = matchesTag ||
+            preset.title.toLowerCase().includes('7v7') ||
+            preset.title.toLowerCase().includes('7c7') ||
+            preset.title.toLowerCase().includes('7 contre 7') ||
+            preset.title.toLowerCase().includes('6v6') ||
+            preset.title.toLowerCase().includes('match final') ||
+            preset.description.toLowerCase().includes('7 contre 7');
+          if (!matches7v7) return false;
         } else if (!matchesTag) {
           return false;
         }

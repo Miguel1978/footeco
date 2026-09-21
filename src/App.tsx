@@ -17,13 +17,14 @@ import { TimerWidget } from './components/TimerWidget';
 import { PrintableOfficialSheet } from './components/PrintableOfficialSheet';
 import { CopyCompoModal } from './components/CopyCompoModal';
 import { ScoreEvolutionChart } from './components/ScoreEvolutionChart';
-import { Check } from 'lucide-react';
+import { Check, ClipboardCheck, Trophy } from 'lucide-react';
 
 export default function App() {
   const [matchData, setMatchData] = useState<MatchData>(() => loadMatchData());
   const [lastLocalSavedAt, setLastLocalSavedAt] = useState<Date | null>(() => getLastLocalSaveTimestamp() || new Date());
   const matchDataRef = useRef<MatchData>(matchData);
 
+  const [appMode, setAppMode] = useState<'match' | 'training'>('match');
   const [selectedPeriodIndex, setSelectedPeriodIndex] = useState<number>(0);
   const [viewMode, setViewMode] = useState<'single' | 'all' | 'tactical' | 'chart'>('single');
   const [isQuickChartOpen, setIsQuickChartOpen] = useState(false);
@@ -146,6 +147,13 @@ export default function App() {
     }));
   };
 
+  const handleUpdateAllPeriods = (updatedPeriods: PeriodMatch[]) => {
+    setMatchData((prev) => ({
+      ...prev,
+      periods: updatedPeriods,
+    }));
+  };
+
   const handleCopyFromPeriod = (sourcePeriodId: number) => {
     const sourcePeriod = matchData.periods.find((p) => p.id === sourcePeriodId);
     const targetPeriod = matchData.periods[selectedPeriodIndex];
@@ -265,9 +273,16 @@ export default function App() {
         onOpenRosterModal={() => setIsRosterModalOpen(true)}
         onOpenStatsModal={() => setIsStatsModalOpen(true)}
         onOpenCalendarModal={() => setIsCalendarModalOpen(true)}
+        appMode={appMode}
+        onSelectAppMode={(mode) => {
+          setAppMode(mode);
+          if (mode === 'training') {
+            setIsTrainingModalOpen(false);
+          }
+        }}
         onOpenTrainingModal={() => {
           setSelectedTrainingSessionId(undefined);
-          setIsTrainingModalOpen(true);
+          setAppMode('training');
         }}
         onOpenTimerModal={() => setIsTimerModalOpen(true)}
         activePeriodIndex={selectedPeriodIndex}
@@ -283,160 +298,213 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 print:p-0">
-        
-        {/* Navigation Tabs (Match 1, Match 2, Match 3, Match 4, View All, 7v7 Pitch, Score Chart) */}
-        <PeriodTabs
-          periods={matchData.periods}
-          selectedPeriodIndex={selectedPeriodIndex}
-          onSelectPeriodIndex={(idx) => setSelectedPeriodIndex(idx)}
-          viewMode={viewMode}
-          onChangeViewMode={setViewMode}
-          onOpenDurationModal={() => setIsDurationModalOpen(true)}
-          isQuickChartOpen={isQuickChartOpen}
-          onToggleQuickChart={() => setIsQuickChartOpen((prev) => !prev)}
-        />
-
-        {/* Optional Collapsible Quick Chart Preview when in single, all, or tactical mode */}
-        {isQuickChartOpen && viewMode !== 'chart' && (
-          <div className="mb-6">
-            <ScoreEvolutionChart matchData={matchData} />
-          </div>
-        )}
-
-        {/* View Mode 1: Single Active Period */}
-        {viewMode === 'single' && activePeriod && (
-          <div>
-            <MatchSheetTable
-              period={activePeriod}
-              roster={matchData.roster}
-              allPeriods={matchData.periods}
-              onUpdatePeriod={handleUpdatePeriod}
-              onCopyFromPeriod={handleCopyFromPeriod}
-              onDuplicateToAllPeriods={handleDuplicateToAllPeriods}
-              onOpenCopyModal={() => setIsCopyCompoModalOpen(true)}
-              onOpenDurationModal={() => setIsDurationModalOpen(true)}
-            />
-          </div>
-        )}
-
-        {/* View Mode 2: All Periods Overview */}
-        {viewMode === 'all' && (
-          <div className="space-y-8">
-            {matchData.periods.map((period) => (
-              <MatchSheetTable
-                key={period.id}
-                period={period}
-                roster={matchData.roster}
-                allPeriods={matchData.periods}
-                onUpdatePeriod={handleUpdatePeriod}
-                onCopyFromPeriod={handleCopyFromPeriod}
-                onDuplicateToAllPeriods={handleDuplicateToAllPeriods}
-                onOpenCopyModal={() => setIsCopyCompoModalOpen(true)}
-                onOpenDurationModal={() => setIsDurationModalOpen(true)}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* View Mode 3: Tactical Pitch 7v7 Formation */}
-        {viewMode === 'tactical' && activePeriod && (
-          <div>
-            <PitchTacticalView period={activePeriod} roster={matchData.roster} />
-            <MatchSheetTable
-              period={activePeriod}
-              roster={matchData.roster}
-              allPeriods={matchData.periods}
-              onUpdatePeriod={handleUpdatePeriod}
-              onCopyFromPeriod={handleCopyFromPeriod}
-              onDuplicateToAllPeriods={handleDuplicateToAllPeriods}
-              onOpenCopyModal={() => setIsCopyCompoModalOpen(true)}
-              onOpenDurationModal={() => setIsDurationModalOpen(true)}
-            />
-          </div>
-        )}
-
-        {/* View Mode 4: Dedicated Score Evolution Chart View */}
-        {viewMode === 'chart' && (
-          <div className="space-y-6">
-            <ScoreEvolutionChart matchData={matchData} />
-
-            {/* Quick Period Recap Cards */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
-              <div className="flex items-center justify-between mb-4">
+        {appMode === 'training' ? (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            {/* Context Breadcrumb & Quick Switch Back Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 sm:px-5 rounded-2xl border border-slate-200 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-emerald-600 text-white shadow-2xs">
+                  <ClipboardCheck className="w-5 h-5" />
+                </div>
                 <div>
-                  <h4 className="text-sm font-extrabold text-slate-900">
-                    Récapitulatif des 4 Périodes de Jeu
-                  </h4>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-sm sm:text-base font-black text-slate-900">
+                      Mode Entraînement : Séances, Ateliers & Schémas Tactiques
+                    </h2>
+                    <span className="text-[11px] font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                      FootEco FE12 • {matchData.season || '2025/2026'}
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-500">
-                    Cliquez sur une période pour ouvrir sa feuille de match et éditer les scores ou la composition
+                    Interface dédiée aux séances de la semaine, situations d'apprentissage, animations tactiques synchronisées et fiches officielles.
                   </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                {matchData.periods.map((p, idx) => {
-                  const s1 = parseInt(p.team1.scoreMatch, 10) || 0;
-                  const o1 = parseInt(p.team1.scoreOpponent, 10) || 0;
-                  const s2 = parseInt(p.team2.scoreMatch, 10) || 0;
-                  const o2 = parseInt(p.team2.scoreOpponent, 10) || 0;
-                  const totalP = s1 + s2;
-                  const totalOpp = o1 + o2;
-
-                  return (
-                    <div
-                      key={p.id}
-                      className="p-3.5 bg-slate-50/80 hover:bg-slate-100/80 border border-slate-200 rounded-xl transition-all space-y-2.5"
-                    >
-                      <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-                        <span className="font-extrabold text-xs text-slate-900">{p.title}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white text-slate-600 font-mono border border-slate-200">
-                          {p.durationMinutes || 15} min
-                        </span>
-                      </div>
-
-                      <div className="space-y-1.5 text-xs">
-                        <div className="flex justify-between items-center bg-white px-2 py-1 rounded border border-slate-100">
-                          <span className="text-yellow-800 font-bold truncate text-[11px]">
-                            {p.team1.teamName || 'Équipe 1'}
-                          </span>
-                          <span className="font-extrabold font-mono text-slate-900">
-                            {s1} - {o1}
-                          </span>
-                        </div>
-
-                        <div className="flex justify-between items-center bg-white px-2 py-1 rounded border border-slate-100">
-                          <span className="text-red-800 font-bold truncate text-[11px]">
-                            {p.team2.teamName || 'Équipe 2'}
-                          </span>
-                          <span className="font-extrabold font-mono text-slate-900">
-                            {s2} - {o2}
-                          </span>
-                        </div>
-
-                        <div className="flex justify-between items-center pt-1 text-[11px] font-bold text-slate-700">
-                          <span>Total Période :</span>
-                          <span className={totalP > totalOpp ? 'text-emerald-700 font-mono' : totalP < totalOpp ? 'text-rose-700 font-mono' : 'text-slate-700 font-mono'}>
-                            {totalP} - {totalOpp}
-                          </span>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedPeriodIndex(idx);
-                          setViewMode('single');
-                        }}
-                        className="w-full text-center text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-white hover:bg-indigo-50 border border-slate-200 py-1.5 rounded-lg transition-colors"
-                      >
-                        Voir la feuille &rarr;
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+              <button
+                type="button"
+                id="btn-return-match-sheets"
+                onClick={() => setAppMode('match')}
+                className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-slate-700 hover:text-slate-950 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95"
+                title="Basculer vers les feuilles de match (4 périodes, composition et chrono)"
+              >
+                <Trophy className="w-4 h-4 text-amber-500" />
+                <span>&larr; Revenir aux Feuilles de Match</span>
+              </button>
             </div>
+
+            {/* Embedded Training Sessions Management Workspace */}
+            <TrainingSessionModal
+              isOpen={true}
+              isEmbedded={true}
+              onClose={() => setAppMode('match')}
+              initialSessionId={selectedTrainingSessionId}
+              defaultSeason={matchData.season}
+            />
           </div>
+        ) : (
+          <>
+            {/* Navigation Tabs (Match 1, Match 2, Match 3, Match 4, View All, 7v7 Pitch, Score Chart) */}
+            <PeriodTabs
+              periods={matchData.periods}
+              selectedPeriodIndex={selectedPeriodIndex}
+              onSelectPeriodIndex={(idx) => setSelectedPeriodIndex(idx)}
+              viewMode={viewMode}
+              onChangeViewMode={setViewMode}
+              onOpenDurationModal={() => setIsDurationModalOpen(true)}
+              isQuickChartOpen={isQuickChartOpen}
+              onToggleQuickChart={() => setIsQuickChartOpen((prev) => !prev)}
+            />
+
+            {/* Optional Collapsible Quick Chart Preview when in single, all, or tactical mode */}
+            {isQuickChartOpen && viewMode !== 'chart' && (
+              <div className="mb-6">
+                <ScoreEvolutionChart matchData={matchData} />
+              </div>
+            )}
+
+            {/* View Mode 1: Single Active Period */}
+            {viewMode === 'single' && activePeriod && (
+              <div>
+                <MatchSheetTable
+                  period={activePeriod}
+                  roster={matchData.roster}
+                  allPeriods={matchData.periods}
+                  onUpdatePeriod={handleUpdatePeriod}
+                  onCopyFromPeriod={handleCopyFromPeriod}
+                  onDuplicateToAllPeriods={handleDuplicateToAllPeriods}
+                  onOpenCopyModal={() => setIsCopyCompoModalOpen(true)}
+                  onOpenDurationModal={() => setIsDurationModalOpen(true)}
+                />
+              </div>
+            )}
+
+            {/* View Mode 2: All Periods Overview */}
+            {viewMode === 'all' && (
+              <div className="space-y-8">
+                {matchData.periods.map((period) => (
+                  <MatchSheetTable
+                    key={period.id}
+                    period={period}
+                    roster={matchData.roster}
+                    allPeriods={matchData.periods}
+                    onUpdatePeriod={handleUpdatePeriod}
+                    onCopyFromPeriod={handleCopyFromPeriod}
+                    onDuplicateToAllPeriods={handleDuplicateToAllPeriods}
+                    onOpenCopyModal={() => setIsCopyCompoModalOpen(true)}
+                    onOpenDurationModal={() => setIsDurationModalOpen(true)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* View Mode 3: Tactical Pitch 7v7 Formation */}
+            {viewMode === 'tactical' && activePeriod && (
+              <div>
+                <PitchTacticalView 
+                  period={activePeriod} 
+                  roster={matchData.roster} 
+                  allPeriods={matchData.periods}
+                  onUpdatePeriod={handleUpdatePeriod}
+                  onUpdateAllPeriods={handleUpdateAllPeriods}
+                />
+                <MatchSheetTable
+                  period={activePeriod}
+                  roster={matchData.roster}
+                  allPeriods={matchData.periods}
+                  onUpdatePeriod={handleUpdatePeriod}
+                  onCopyFromPeriod={handleCopyFromPeriod}
+                  onDuplicateToAllPeriods={handleDuplicateToAllPeriods}
+                  onOpenCopyModal={() => setIsCopyCompoModalOpen(true)}
+                  onOpenDurationModal={() => setIsDurationModalOpen(true)}
+                />
+              </div>
+            )}
+
+            {/* View Mode 4: Dedicated Score Evolution Chart View */}
+            {viewMode === 'chart' && (
+              <div className="space-y-6">
+                <ScoreEvolutionChart matchData={matchData} />
+
+                {/* Quick Period Recap Cards */}
+                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className="text-sm font-extrabold text-slate-900">
+                        Récapitulatif des 4 Périodes de Jeu
+                      </h4>
+                      <p className="text-xs text-slate-500">
+                        Cliquez sur une période pour ouvrir sa feuille de match et éditer les scores ou la composition
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                    {matchData.periods.map((p, idx) => {
+                      const s1 = parseInt(p.team1.scoreMatch, 10) || 0;
+                      const o1 = parseInt(p.team1.scoreOpponent, 10) || 0;
+                      const s2 = parseInt(p.team2.scoreMatch, 10) || 0;
+                      const o2 = parseInt(p.team2.scoreOpponent, 10) || 0;
+                      const totalP = s1 + s2;
+                      const totalOpp = o1 + o2;
+
+                      return (
+                        <div
+                          key={p.id}
+                          className="p-3.5 bg-slate-50/80 hover:bg-slate-100/80 border border-slate-200 rounded-xl transition-all space-y-2.5"
+                        >
+                          <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                            <span className="font-extrabold text-xs text-slate-900">{p.title}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-white text-slate-600 font-mono border border-slate-200">
+                              {p.durationMinutes || 15} min
+                            </span>
+                          </div>
+
+                          <div className="space-y-1.5 text-xs">
+                            <div className="flex justify-between items-center bg-white px-2 py-1 rounded border border-slate-100">
+                              <span className="text-yellow-800 font-bold truncate text-[11px]">
+                                {p.team1.teamName || 'Équipe 1'}
+                              </span>
+                              <span className="font-extrabold font-mono text-slate-900">
+                                {s1} - {o1}
+                              </span>
+                            </div>
+
+                            <div className="flex justify-between items-center bg-white px-2 py-1 rounded border border-slate-100">
+                              <span className="text-red-800 font-bold truncate text-[11px]">
+                                {p.team2.teamName || 'Équipe 2'}
+                              </span>
+                              <span className="font-extrabold font-mono text-slate-900">
+                                {s2} - {o2}
+                              </span>
+                            </div>
+
+                            <div className="flex justify-between items-center pt-1 text-[11px] font-bold text-slate-700">
+                              <span>Total Période :</span>
+                              <span className={totalP > totalOpp ? 'text-emerald-700 font-mono' : totalP < totalOpp ? 'text-rose-700 font-mono' : 'text-slate-700 font-mono'}>
+                                {totalP} - {totalOpp}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPeriodIndex(idx);
+                              setViewMode('single');
+                            }}
+                            className="w-full text-center text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-white hover:bg-indigo-50 border border-slate-200 py-1.5 rounded-lg transition-colors"
+                          >
+                            Voir la feuille &rarr;
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
       </main>
@@ -512,12 +580,14 @@ export default function App() {
         }}
       />
 
-      <TrainingSessionModal
-        isOpen={isTrainingModalOpen}
-        onClose={() => setIsTrainingModalOpen(false)}
-        initialSessionId={selectedTrainingSessionId}
-        defaultSeason={matchData.season}
-      />
+      {appMode === 'match' && (
+        <TrainingSessionModal
+          isOpen={isTrainingModalOpen}
+          onClose={() => setIsTrainingModalOpen(false)}
+          initialSessionId={selectedTrainingSessionId}
+          defaultSeason={matchData.season}
+        />
+      )}
 
       <TimerWidget
         isOpen={isTimerModalOpen}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { TrainingSession } from '../types';
+import { splitDrillDescription } from '../utils/drillDescription';
 
 interface PrintableTrainingSheetProps {
   session: TrainingSession;
@@ -10,6 +11,47 @@ export const PrintableTrainingSheet: React.FC<PrintableTrainingSheetProps> = ({ 
   const formattedDate = session.date.includes('-')
     ? session.date.split('-').reverse().join('.')
     : session.date;
+
+  const renderPrintableDescription = (
+    desc: string = '',
+    caption1?: string,
+    caption2?: string,
+    coach1?: string,
+    coach2?: string
+  ) => {
+    const parsed = splitDrillDescription(desc, caption1, caption2, coach1, coach2);
+    if (parsed.isSplit && parsed.atelier1 && parsed.atelier2) {
+      return (
+        <div className="space-y-1.5">
+          <div className="border border-slate-400 bg-red-50/40 p-1 rounded">
+            <div className="font-extrabold text-[10px] text-red-950 border-b border-red-200 pb-0.5 mb-0.5 flex items-center justify-between">
+              <span>● ATELIER 1 (Dessin 1) {parsed.atelier1.title ? `- ${parsed.atelier1.title}` : ''}</span>
+              {coach1 && <span className="text-[9px] font-bold text-red-900 bg-red-100/80 px-1 rounded">Coach : {coach1}</span>}
+            </div>
+            <div className="whitespace-pre-line leading-tight text-[10px] text-slate-800 font-medium">
+              {parsed.atelier1.rawText}
+            </div>
+          </div>
+
+          <div className="border border-slate-400 bg-blue-50/40 p-1 rounded">
+            <div className="font-extrabold text-[10px] text-blue-950 border-b border-blue-200 pb-0.5 mb-0.5 flex items-center justify-between">
+              <span>● ATELIER 2 (Dessin 2) {parsed.atelier2.title ? `- ${parsed.atelier2.title}` : ''}</span>
+              {coach2 && <span className="text-[9px] font-bold text-blue-900 bg-blue-100/80 px-1 rounded">Coach : {coach2}</span>}
+            </div>
+            <div className="whitespace-pre-line leading-tight text-[10px] text-slate-800 font-medium">
+              {parsed.atelier2.rawText}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="border border-slate-300 bg-slate-50/60 p-1 rounded whitespace-pre-line leading-tight text-[10px] text-slate-800 font-medium">
+        {desc}
+      </div>
+    );
+  };
 
   const renderDrawing = (drawing: { image?: string; coach?: string; caption?: string }) => {
     if (!drawing?.image) {
@@ -74,7 +116,7 @@ export const PrintableTrainingSheet: React.FC<PrintableTrainingSheetProps> = ({ 
               {formattedDate}
             </td>
             <td className="p-1.5 font-bold italic text-right pr-3 bg-slate-50">
-              {session.coach || 'Sébastien M.'}
+              {session.coach || 'Miguel R.'}
               {session.assistantCoach && ` • ${session.assistantCoach}`}
             </td>
           </tr>
@@ -174,9 +216,13 @@ export const PrintableTrainingSheet: React.FC<PrintableTrainingSheetProps> = ({ 
           <tr>
             <td className="p-1.5 border-r-2 border-black align-top text-[10.5px]">
               <div className="font-bold italic mb-1 text-slate-800">Description</div>
-              <div className="whitespace-pre-line leading-snug">
-                {session.initialPart?.description || 'Dessin 1 = Duel 1 contre 1...\nDessin 2 = Duel 1 contre 1...'}
-              </div>
+              {renderPrintableDescription(
+                session.initialPart?.description,
+                session.initialPart?.drawing1?.caption,
+                session.initialPart?.drawing2?.caption,
+                session.initialPart?.drawing1?.coach || session.coach,
+                session.initialPart?.drawing2?.coach || session.assistantCoach
+              )}
             </td>
             <td className="p-1 border-r-2 border-black align-middle text-center font-bold text-[11px] whitespace-pre-line">
               {session.initialPart?.duration || '2X\n15\nmin\n\nTotal\n30\nmin'}
@@ -213,9 +259,13 @@ export const PrintableTrainingSheet: React.FC<PrintableTrainingSheetProps> = ({ 
           <tr>
             <td className="p-1.5 border-r-2 border-black align-top text-[10.5px]">
               <div className="font-bold italic mb-1 text-slate-800">Description</div>
-              <div className="whitespace-pre-line leading-snug">
-                {session.playedForms?.description || 'Dessin 1 = 1 contre 1, 4 zones et 2 petits buts\n\nDessin 2 = Idem'}
-              </div>
+              {renderPrintableDescription(
+                session.playedForms?.description,
+                session.playedForms?.drawing1?.caption,
+                session.playedForms?.drawing2?.caption,
+                session.playedForms?.drawing1?.coach || session.coach,
+                session.playedForms?.drawing2?.coach || session.assistantCoach
+              )}
             </td>
             <td className="p-1 border-r-2 border-black align-middle text-center font-bold text-[11px] whitespace-pre-line">
               {session.playedForms?.duration || '2 X\n15min\n\nTotal\n30\nmin'}
@@ -252,8 +302,14 @@ export const PrintableTrainingSheet: React.FC<PrintableTrainingSheetProps> = ({ 
           <tr>
             <td className="p-1.5 border-r-2 border-black align-top text-[10.5px]">
               <div className="font-bold italic mb-1 text-slate-800">Description</div>
-              <div className="whitespace-pre-line leading-snug">
-                {session.finalGame?.description || 'Match 6 contre 6\n- Positionnement def\n- Détermination\n- Def et off ensemble'}
+              <div className="border border-slate-300 bg-emerald-50/40 p-1.5 rounded space-y-1">
+                <div className="font-extrabold text-[10px] text-emerald-950 border-b border-emerald-200 pb-0.5 mb-0.5 flex items-center justify-between">
+                  <span>● JEU FINAL (Match 7v7 FootEco)</span>
+                  <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 px-1 rounded">2 Gardiens</span>
+                </div>
+                <div className="whitespace-pre-line leading-tight text-[10px] text-slate-800 font-medium">
+                  {session.finalGame?.description || 'Match officiel FootEco 7 contre 7 (7v7) avec 2 gardiens.'}
+                </div>
               </div>
             </td>
             <td className="p-1 border-r-2 border-black align-middle text-center font-bold text-[11px] whitespace-pre-line">

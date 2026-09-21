@@ -43,7 +43,7 @@ export const PITCH_BASE = `
 `;
 
 // 1. Initial Part - Drawing 1: Duel 1 contre 1 (contournement assiettes + passe entre piquets)
-const SVG_INIT_1 = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+const SVG_INIT_1 = `<svg data-scenario-id="scenario-duel-1v1" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
   ${PITCH_BASE}
   <!-- Sky background -->
   <rect width="400" height="70" fill="url(#skyGrad)" />
@@ -104,7 +104,7 @@ const SVG_INIT_1 = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg
 </svg>`;
 
 // 2. Initial Part - Drawing 2: Duel 1c1 contournement piquets & transition
-const SVG_INIT_2 = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+const SVG_INIT_2 = `<svg data-scenario-id="scenario-slalom-frappe" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
   ${PITCH_BASE}
   <!-- Sky background -->
   <rect width="400" height="70" fill="url(#skyGrad)" />
@@ -144,7 +144,7 @@ const SVG_INIT_2 = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg
 </svg>`;
 
 // 3. Formes jouées - Drawing 1: 1v1, 4 zones et 2 petits buts (SEB)
-const SVG_FORM_1 = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+const SVG_FORM_1 = `<svg data-scenario-id="scenario-vagues-2v1" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
   ${PITCH_BASE}
   <rect width="400" height="70" fill="url(#skyGrad)" />
   <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
@@ -195,7 +195,7 @@ const SVG_FORM_1 = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg
 </svg>`;
 
 // 4. Formes jouées - Drawing 2: 1v1, 4 zones et 2 petits buts (Miguel)
-const SVG_FORM_2 = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+const SVG_FORM_2 = `<svg data-scenario-id="scenario-transition-3v2" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
   ${PITCH_BASE}
   <rect width="400" height="70" fill="url(#skyGrad)" />
   <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
@@ -237,54 +237,58 @@ const SVG_FORM_2 = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg
   </g>
 </svg>`;
 
-// 5. Final Game - 6 contre 6 avec remplaçants
-const SVG_GAME_6V6 = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+// 5. Final Game - 7 contre 7 (FootEco officiel) avec remplaçants
+const SVG_GAME_7V7 = `<svg data-scenario-id="scenario-match-6v6" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
   ${PITCH_BASE}
   <rect width="400" height="70" fill="url(#skyGrad)" />
   <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
   <rect x="5" y="65" width="390" height="170" fill="url(#stripes)" opacity="0.6"/>
 
-  <!-- Field lines -->
-  <polygon points="120,65 280,65 310,130 90,130" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" />
-  <polygon points="90,170 310,170 340,235 60,235" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" />
+  <!-- Field lines & Center circle -->
+  <polygon points="120,65 280,65 310,125 90,125" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" />
+  <polygon points="90,175 310,175 340,235 60,235" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" />
   <line x1="25" y1="150" x2="375" y2="150" stroke="rgba(255,255,255,0.8)" stroke-width="2" />
   <ellipse cx="200" cy="150" rx="45" ry="16" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="2" />
 
   <!-- Goals -->
-  <rect x="170" y="55" width="60" height="10" fill="none" stroke="#ffffff" stroke-width="2" />
-  <rect x="160" y="232" width="80" height="8" fill="none" stroke="#ffffff" stroke-width="2" />
+  <rect x="165" y="55" width="70" height="10" fill="none" stroke="#ffffff" stroke-width="2" />
+  <rect x="155" y="232" width="90" height="8" fill="none" stroke="#ffffff" stroke-width="2" />
 
-  <!-- Team Blue (6 players: 1 GK + 2 DEF + 2 MID + 1 ATT) -->
-  <circle cx="200" cy="72" r="5" fill="#facc15" stroke="#ffffff" stroke-width="1.5" /> <!-- GK Blue -->
-  <circle cx="160" cy="95" r="5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
-  <circle cx="240" cy="95" r="5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
-  <circle cx="170" cy="130" r="5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
-  <circle cx="230" cy="130" r="5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
-  <circle cx="200" cy="160" r="5.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
+  <!-- Team Blue (7 players : 1 GK + 2 DEF + 3 MID + 1 ATT en système 2-3-1) -->
+  <circle cx="200" cy="72" r="5.5" fill="#facc15" stroke="#ffffff" stroke-width="1.5" /> <!-- GK Blue -->
+  <circle cx="150" cy="98" r="5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" /> <!-- DEF Gauche -->
+  <circle cx="250" cy="98" r="5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" /> <!-- DEF Droit -->
+  <circle cx="120" cy="126" r="5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" /> <!-- MIL Gauche -->
+  <circle cx="200" cy="126" r="5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" /> <!-- MIL Axial -->
+  <circle cx="280" cy="126" r="5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" /> <!-- MIL Droit -->
+  <circle cx="200" cy="158" r="5.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" /> <!-- ATT -->
 
-  <!-- Team Red (6 players: 1 GK + 2 DEF + 2 MID + 1 ATT) -->
+  <!-- Team Red (7 players : 1 GK + 2 DEF + 3 MID + 1 ATT en système 2-3-1) -->
   <circle cx="200" cy="225" r="6" fill="#10b981" stroke="#ffffff" stroke-width="1.5" /> <!-- GK Red -->
-  <circle cx="150" cy="205" r="6" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
-  <circle cx="250" cy="205" r="6" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
-  <circle cx="170" cy="170" r="6" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
-  <circle cx="230" cy="170" r="6" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
-  <circle cx="200" cy="138" r="5.5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
+  <circle cx="145" cy="204" r="5.5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" /> <!-- DEF Gauche -->
+  <circle cx="255" cy="204" r="5.5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" /> <!-- DEF Droit -->
+  <circle cx="120" cy="174" r="5.5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" /> <!-- MIL Gauche -->
+  <circle cx="200" cy="174" r="5.5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" /> <!-- MIL Axial -->
+  <circle cx="280" cy="174" r="5.5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" /> <!-- MIL Droit -->
+  <circle cx="200" cy="142" r="5.5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" /> <!-- ATT -->
 
-  <!-- Soccer Ball -->
-  <circle cx="200" cy="148" r="3.5" fill="#ffffff" stroke="#000" stroke-width="1" />
+  <!-- Soccer Ball with tactical trajectory -->
+  <circle cx="200" cy="150" r="3.5" fill="#ffffff" stroke="#000" stroke-width="1" />
 
   <!-- Substitutes juggling in sideline group -->
   <g transform="translate(320, 160)">
-    <rect x="-10" y="-12" width="75" height="35" rx="6" fill="#0f172a" opacity="0.8" />
+    <rect x="-10" y="-12" width="78" height="35" rx="6" fill="#0f172a" opacity="0.85" />
     <circle cx="10" cy="0" r="4.5" fill="#2563eb" stroke="#fff" stroke-width="1" />
     <circle cx="25" cy="0" r="4.5" fill="#ef4444" stroke="#fff" stroke-width="1" />
     <circle cx="40" cy="0" r="4.5" fill="#2563eb" stroke="#fff" stroke-width="1" />
-    <text x="27" y="16" font-size="7" font-family="sans-serif" font-weight="bold" fill="#f8fafc" text-anchor="middle">Jonglages</text>
+    <text x="29" y="16" font-size="7" font-family="sans-serif" font-weight="bold" fill="#f8fafc" text-anchor="middle">Jonglages (Rempl.)</text>
   </g>
 </svg>`;
 
+const SVG_GAME_6V6 = SVG_GAME_7V7;
+
 // 6. Conservation / Rondo 4v4+3
-const SVG_CONSERVATION = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+const SVG_CONSERVATION = `<svg data-scenario-id="scenario-possession-3v3-jokers" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
   ${PITCH_BASE}
   <rect width="400" height="240" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
   <!-- Playing Grid -->
@@ -318,7 +322,7 @@ const SVG_CONSERVATION = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/20
 </svg>`;
 
 // 7. Dribble & Conduite de balle - Slalom, feintes & élimination
-const SVG_DRIBBLE = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+const SVG_DRIBBLE = `<svg data-scenario-id="scenario-slalom-frappe" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
   ${PITCH_BASE}
   <rect width="400" height="70" fill="url(#skyGrad)" />
   <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
@@ -342,7 +346,7 @@ const SVG_DRIBBLE = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/sv
 </svg>`;
 
 // 8. Transition rapide (3s) & Contre-Attaque
-const SVG_TRANSITION_3S = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+const SVG_TRANSITION_3S = `<svg data-scenario-id="scenario-transition-3v2" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
   ${PITCH_BASE}
   <rect width="400" height="70" fill="url(#skyGrad)" />
   <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
@@ -369,7 +373,7 @@ const SVG_TRANSITION_3S = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2
 </svg>`;
 
 // 9. Tir & Finition au but
-const SVG_SHOOTING = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+const SVG_SHOOTING = `<svg data-scenario-id="scenario-tirs-enchaines-finition" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
   ${PITCH_BASE}
   <rect width="400" height="70" fill="url(#skyGrad)" />
   <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
@@ -392,7 +396,7 @@ const SVG_SHOOTING = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/s
 </svg>`;
 
 // 10. Pressing en bloc & Récupération haute
-const SVG_PRESSING = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+const SVG_PRESSING = `<svg data-scenario-id="scenario-pressing-recuperation" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
   ${PITCH_BASE}
   <rect width="400" height="70" fill="url(#skyGrad)" />
   <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
@@ -504,19 +508,54 @@ export const DRILL_PRESETS: DrillPreset[] = [
     keywords: ['conservation', 'rondo', 'possession', 'passe', 'transition', '4v4', '4c4', 'jokers', 'ta'],
   },
   {
-    id: 'preset-game-6v6',
-    title: 'Match Final 6 contre 6 (FE12 FootEco)',
+    id: 'preset-game-7v7',
+    title: 'Match Final 7 contre 7 (FE12 FootEco Officiel)',
     category: 'game',
-    description: 'Match 6 contre 6 : Positionnement défensif, détermination, défendre et attaquer ensemble. Remplaçants en jonglage de groupe.',
-    svgContent: SVG_GAME_6V6,
+    description: 'Match officiel FootEco 7 contre 7 : 1 gardien + 6 joueurs de champ (système 2-3-1). Relance protégée, sortie sous pression et devoirs techniques remplaçants.',
+    svgContent: SVG_GAME_7V7,
     defaultCoach: '',
-    caption: 'Match final 6 contre 6 (Remplaçants jonglent en groupe)',
-    keywords: ['match', '6v6', '6c6', 'jeu final', 'footeco', 'tactique', 'jonglages'],
+    caption: 'Match final 7 contre 7 FootEco (7v7 avec remplaçants en jonglage)',
+    keywords: ['match', '7v7', '7c7', '7 contre 7', '6v6', '6c6', 'jeu final', 'footeco', 'tactique', 'jonglages'],
+  },
+  {
+    id: 'preset-game-6v6',
+    title: 'Match Final 7 contre 7 (FE12 FootEco)',
+    category: 'game',
+    description: 'Match 7 contre 7 : Positionnement défensif, détermination, défendre et attaquer ensemble. Remplaçants en jonglage de groupe.',
+    svgContent: SVG_GAME_7V7,
+    defaultCoach: '',
+    caption: 'Match final 7 contre 7 FootEco',
+    keywords: ['match', '7v7', '7c7', '7 contre 7', '6v6', '6c6', 'jeu final', 'footeco', 'tactique', 'jonglages'],
   },
 ];
 
 export function getPresetSvg(id: string): string | undefined {
   return DRILL_PRESETS.find(p => p.id === id)?.svgContent;
+}
+
+// Helper to extract synchronized scenario ID from SVG content or attributes
+export function extractScenarioIdFromSvg(svgContent?: string): string | null {
+  if (!svgContent) return null;
+  const match = svgContent.match(/data-scenario-id=["']([^"']+)["']/i);
+  if (match && match[1]) return match[1];
+
+  // Visual text clues in SVG if attribute missing
+  const lower = svgContent.toLowerCase();
+  if (lower.includes('jonglages') || lower.includes('7v7') || lower.includes('7c7') || lower.includes('6v6') || lower.includes('6c6') || lower.includes('match final') || lower.includes('jeu final')) return 'scenario-match-6v6';
+  if (lower.includes('circuit') || lower.includes('losange') || lower.includes('carré technique') || (lower.includes('passe') && (lower.includes('appui') || lower.includes('soutien')))) return 'scenario-circuit-passes-appui';
+  if (lower.includes('rondo') || lower.includes('4v2') || lower.includes('4c2') || lower.includes('taureau')) return 'scenario-rondo-4v2';
+  if (lower.includes('slalom') || lower.includes('piquet') || lower.includes('motricité') || lower.includes('conduite') || lower.includes('crochet')) return 'scenario-slalom-frappe';
+  if (lower.includes('transition 3s') || lower.includes('contre-attaque 3v2') || lower.includes('3v2') || lower.includes('3c2') || lower.includes('4v3') || lower.includes('4c3') || lower.includes('intervalle')) return 'scenario-transition-3v2';
+  if (lower.includes('pivot') || lower.includes('finition') || lower.includes('tireur') || lower.includes('frappe') || lower.includes('enchaîn') || lower.includes('rebond')) return 'scenario-tirs-enchaines-finition';
+  if (lower.includes('pressing') || lower.includes('interception') || lower.includes('bloc haut') || lower.includes('récupération')) return 'scenario-pressing-recuperation';
+  if (lower.includes('cadrage') || lower.includes('recul-frein') || lower.includes('frein') || lower.includes('duel défensif')) return 'scenario-cadrage-defense';
+  if (lower.includes('conservation') || lower.includes('possession') || lower.includes('joker') || lower.includes('stop-ball') || lower.includes('3v3') || lower.includes('3c3')) return 'scenario-possession-3v3-jokers';
+  if (lower.includes('2v1') || lower.includes('2c1') || lower.includes('vague') || lower.includes('4 zones') || lower.includes('surnombre')) return 'scenario-vagues-2v1';
+  if (lower.includes('dédoublement') || lower.includes('une-deux') || lower.includes('combinaison') || lower.includes('triangle')) return 'scenario-dedoublement-passes';
+  if (lower.includes('centre') || lower.includes('débordement') || lower.includes('couloir') || lower.includes('volée') || lower.includes('tête')) return 'scenario-centres-finition';
+  if (lower.includes('1v1') || lower.includes('1c1') || lower.includes('duel') || lower.includes('élimination')) return 'scenario-duel-1v1';
+
+  return null;
 }
 
 // Generates a specialized vector tactical diagram dynamically tailored to the exercise details
@@ -535,7 +574,7 @@ export function generateTailoredSvgFromExercise(options: {
   const isSlot2 = options.slotName === 'Dessin 2';
 
   // Analysis of exercise keywords
-  const isGame = options.partType === 'finalGame' || fullText.includes('6v6') || fullText.includes('6c6') || fullText.includes('match') || fullText.includes('jeu final');
+  const isGame = options.partType === 'finalGame' || fullText.includes('7v7') || fullText.includes('7c7') || fullText.includes('7 contre 7') || fullText.includes('6v6') || fullText.includes('6c6') || fullText.includes('match') || fullText.includes('jeu final');
   const is2v1 = fullText.includes('2v1') || fullText.includes('2c1') || fullText.includes('3v2') || fullText.includes('3c2') || fullText.includes('4v3') || fullText.includes('supériorité') || fullText.includes('décalage');
   const isShooting = fullText.includes('tir') || fullText.includes('frappe') || fullText.includes('finition') || fullText.includes('gardien') || fullText.includes('cage') || fullText.includes('but');
   const isConservation = fullText.includes('conservation') || fullText.includes('rondo') || fullText.includes('possession') || fullText.includes('4v4') || fullText.includes('3v3') || fullText.includes('taureau') || fullText.includes('joker');
@@ -560,7 +599,7 @@ export function generateTailoredSvgFromExercise(options: {
 
   // 1. MATCH FINAL 6V6 (FootEco)
   if (isGame) {
-    return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+    return `<svg data-scenario-id="scenario-match-6v6" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
       ${PITCH_BASE}
       <rect width="400" height="70" fill="url(#skyGrad)" />
       <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
@@ -604,7 +643,8 @@ export function generateTailoredSvgFromExercise(options: {
 
   // 2. SUPÉRIORITÉ NUMÉRIQUE 2V1 / 3V2 (Transition offensive)
   if (is2v1) {
-    return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+    const scId = isSlot2 ? 'scenario-transition-3v2' : 'scenario-vagues-2v1';
+    return `<svg data-scenario-id="${scId}" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
       ${PITCH_BASE}
       <rect width="400" height="70" fill="url(#skyGrad)" />
       <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
@@ -662,7 +702,9 @@ export function generateTailoredSvgFromExercise(options: {
 
   // 3. TIR / FINITION AU BUT
   if (isShooting) {
-    return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+    const isCentres = fullText.includes('centre') || fullText.includes('débord');
+    const scId = isCentres ? 'scenario-centres-finition' : 'scenario-tirs-enchaines-finition';
+    return `<svg data-scenario-id="${scId}" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
       ${PITCH_BASE}
       <rect width="400" height="70" fill="url(#skyGrad)" />
       <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
@@ -701,7 +743,9 @@ export function generateTailoredSvgFromExercise(options: {
 
   // 4. CONSERVATION / RONDO / POSSESSION
   if (isConservation) {
-    return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+    const isJokers = fullText.includes('joker') || fullText.includes('3v3') || fullText.includes('4v4');
+    const scId = isJokers ? 'scenario-possession-3v3-jokers' : 'scenario-rondo-4v2';
+    return `<svg data-scenario-id="${scId}" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
       ${PITCH_BASE}
       <rect width="400" height="240" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
       <rect width="400" height="240" fill="url(#stripes)" opacity="0.4"/>
@@ -734,7 +778,7 @@ export function generateTailoredSvgFromExercise(options: {
 
   // 5. SLALOM, CONDUITE & MOTRICITÉ (1v1 contournement ou parcours technique)
   if (isSlalom) {
-    return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+    return `<svg data-scenario-id="scenario-slalom-frappe" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
       ${PITCH_BASE}
       <rect width="400" height="70" fill="url(#skyGrad)" />
       <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
@@ -766,7 +810,9 @@ export function generateTailoredSvgFromExercise(options: {
 
   // 6. PRESSING & BLOC DÉFENSIF
   if (isPressing) {
-    return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+    const isHigh = fullText.includes('pressing') || fullText.includes('récupération');
+    const scId = isHigh ? 'scenario-pressing-recuperation' : 'scenario-cadrage-defense';
+    return `<svg data-scenario-id="${scId}" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
       ${PITCH_BASE}
       <rect width="400" height="70" fill="url(#skyGrad)" />
       <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />
@@ -798,7 +844,7 @@ export function generateTailoredSvgFromExercise(options: {
   }
 
   // 7. DUEL 1C1 / ATELIER PAR DÉFAUT
-  return `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
+  return `<svg data-scenario-id="scenario-duel-1v1" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" class="w-full h-full rounded">
     ${PITCH_BASE}
     <rect width="400" height="70" fill="url(#skyGrad)" />
     <polygon points="40,65 360,65 395,235 5,235" fill="url(#grassGrad)" stroke="#ffffff" stroke-width="2" />

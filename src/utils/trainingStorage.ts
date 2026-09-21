@@ -18,8 +18,8 @@ export function getInitialTrainingSessions(): TrainingSession[] {
       team: 'FE12 Bas-Valais',
       date: '2025-08-04',
       season: '2025/2026',
-      coach: 'Sébastien M.',
-      assistantCoach: 'Miguel R.',
+      coach: 'Miguel R.',
+      assistantCoach: 'Sébastien M.',
       themeTE: {
         description: 'Geste technique à la récupération du ballon\nPasse, contrôle, dribble, ...',
         coachingAccents: 'Placement défensif\nDétermination et volonté de vouloir le ballon\nDéfendre ensemble',
@@ -248,7 +248,7 @@ export function createNewEmptyTrainingSession(
 ): TrainingSession {
   const dateToUse = defaultDate || new Date().toISOString().split('T')[0];
   const seasonToUse = defaultSeason || getSeasonFromDate(dateToUse);
-  const coachToUse = defaultCoach || 'Sébastien M.';
+  const coachToUse = defaultCoach || 'Miguel R.';
   const initSvg1 = getPresetSvg('preset-init-1') || '';
   const formSvg1 = getPresetSvg('preset-form-1') || '';
   const gameSvg = getPresetSvg('preset-game-6v6') || '';
@@ -260,7 +260,7 @@ export function createNewEmptyTrainingSession(
     date: dateToUse,
     season: seasonToUse,
     coach: coachToUse,
-    assistantCoach: 'Miguel R.',
+    assistantCoach: 'Sébastien M.',
     themeTE: {
       description: 'Geste technique à la récupération du ballon\nPasse, contrôle, dribble, ...',
       coachingAccents: 'Placement défensif\nDétermination et volonté de vouloir le ballon\nDéfendre ensemble',
@@ -282,12 +282,12 @@ export function createNewEmptyTrainingSession(
       description: 'Dessin 1 = Duel 1 contre 1 passer derrière les assiettes et l\'entraîneur remet le ballon entre les deux piquets\n\nDessin 2 = Duel 1 contre 1 le ballon est remis au premier joueur qui passe les deux piquets et contourne le piquet',
       drawing1: {
         image: initSvg1,
-        coach: 'SEB',
+        coach: 'Miguel',
         caption: 'Duel 1c1 contournement assiettes & piquets',
       },
       drawing2: {
         image: '',
-        coach: 'Miguel',
+        coach: 'SEB',
         caption: '',
       },
     },
@@ -298,12 +298,12 @@ export function createNewEmptyTrainingSession(
       description: 'Dessin 1 = 1 contre 1, 4 zones et 2 petits buts\n\nDessin 2 = Idem',
       drawing1: {
         image: formSvg1,
-        coach: 'SEB',
-        caption: '1 contre 1 en 4 zones & 2 petits buts (SEB)',
+        coach: 'Miguel',
+        caption: '1 contre 1 en 4 zones & 2 petits buts (Miguel)',
       },
       drawing2: {
         image: '',
-        coach: 'Miguel',
+        coach: 'SEB',
         caption: '',
       },
     },

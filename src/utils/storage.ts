@@ -223,15 +223,167 @@ export function calculatePlayerStats(match: MatchData): PlayerStats[] {
   });
 }
 
-export function exportMatchAsJSON(match: MatchData): void {
-  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(match, null, 2));
+export interface MatchJSONExportMetadata {
+  format: 'footeco_fe12_match_sheet';
+  version: string;
+  exportedAt: string;
+  matchId: string;
+  matchTitle: string;
+  opponent: string;
+  date: string;
+  season?: string;
+  periodsCount: number;
+  rosterCount: number;
+  finalScore: string;
+}
+
+export function generateMatchJSONFilename(match: MatchData): string {
+  const cleanTitle = (match.matchTitle || 'feuille_match')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '_');
+  const cleanOpponent = (match.opponent || 'adversaire')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '_');
+  const cleanDate = (match.date || new Date().toISOString().split('T')[0])
+    .replace(/[/\\?%*:|"<>]/g, '-');
+  return `feuille_match_${cleanTitle}_vs_${cleanOpponent}_${cleanDate}.json`;
+}
+
+export function buildMatchJSONPayload(match: MatchData) {
+  return {
+    _exportMeta: {
+      format: 'footeco_fe12_match_sheet' as const,
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      matchId: match.id,
+      matchTitle: match.matchTitle,
+      opponent: match.opponent,
+      date: match.date,
+      season: match.season,
+      periodsCount: match.periods.length,
+      rosterCount: match.roster.length,
+      finalScore: match.finalScore,
+    },
+    ...match,
+    matchData: match,
+  };
+}
+
+export function exportMatchAsJSON(match: MatchData): { filename: string; sizeKb: string } {
+  const filename = generateMatchJSONFilename(match);
+  const payload = buildMatchJSONPayload(match);
+  const jsonString = JSON.stringify(payload, null, 2);
+  
+  const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  
   const downloadAnchor = document.createElement('a');
-  downloadAnchor.setAttribute('href', dataStr);
-  const filename = `feuille_match_${match.matchTitle.replace(/\s+/g, '_')}_${match.date || 'date'}.json`;
+  downloadAnchor.setAttribute('href', url);
   downloadAnchor.setAttribute('download', filename);
   document.body.appendChild(downloadAnchor);
   downloadAnchor.click();
-  downloadAnchor.remove();
+  document.body.removeChild(downloadAnchor);
+  
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+  const sizeKb = (blob.size / 1024).toFixed(1);
+  return { filename, sizeKb };
+}
+
+export async function copyMatchJSONToClipboard(match: MatchData): Promise<boolean> {
+  try {
+    const payload = buildMatchJSONPayload(match);
+    const jsonString = JSON.stringify(payload, null, 2);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(jsonString);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error('Erreur copie presse-papier JSON', e);
+    return false;
+  }
+}
+
+export function parseAndValidateMatchJSON(jsonContent: string): {
+  success: boolean;
+  data?: MatchData;
+  error?: string;
+  metadata?: MatchJSONExportMetadata;
+} {
+  try {
+    const parsed = JSON.parse(jsonContent);
+    // Support either top-level match or nested under parsed.matchData
+    const target: any = (parsed && parsed.matchData && Array.isArray(parsed.matchData.periods))
+      ? parsed.matchData
+      : parsed;
+
+    if (!target || typeof target !== 'object') {
+      return { success: false, error: 'Le fichier ne contient pas un objet JSON valide.' };
+    }
+
+    if (!Array.isArray(target.periods) || target.periods.length === 0) {
+      return { success: false, error: 'Structure invalide : tableau "periods" manquant ou vide. Le fichier doit être une feuille de match FootEco.' };
+    }
+
+    // Normalize match data to prevent missing fields or undefined values
+    const normalizedMatch: MatchData = {
+      id: target.id || `match-${Date.now()}`,
+      matchTitle: target.matchTitle || 'Rencontre FE12',
+      opponent: target.opponent || '',
+      date: target.date || new Date().toISOString().split('T')[0],
+      season: target.season || '',
+      eventType: target.eventType || 'championnat',
+      finalScore: target.finalScore !== undefined && target.finalScore !== '' ? target.finalScore : '0 - 0',
+      periods: target.periods.map((p: any, idx: number) => ({
+        id: p.id !== undefined ? p.id : idx + 1,
+        periodNumber: p.periodNumber !== undefined ? p.periodNumber : idx + 1,
+        title: p.title || `Match ${idx + 1}`,
+        durationMinutes: p.durationMinutes || 15,
+        notes: p.notes || '',
+        team1: {
+          coachName: p.team1?.coachName || '',
+          teamName: p.team1?.teamName || 'Equipe 1',
+          headerColor: p.team1?.headerColor || 'yellow',
+          scoreMatch: p.team1?.scoreMatch !== undefined && p.team1?.scoreMatch !== '' ? String(p.team1.scoreMatch) : '0',
+          scoreOpponent: p.team1?.scoreOpponent !== undefined && p.team1?.scoreOpponent !== '' ? String(p.team1.scoreOpponent) : '0',
+          shootoutScore: p.team1?.shootoutScore || '',
+          shootoutOpponent: p.team1?.shootoutOpponent || '',
+          result: p.team1?.result || '',
+          points: p.team1?.points !== undefined && p.team1?.points !== '' ? String(p.team1.points) : '0',
+          titulaires: Array.isArray(p.team1?.titulaires) ? p.team1.titulaires : [],
+          remplacants: Array.isArray(p.team1?.remplacants) ? p.team1.remplacants : [],
+        },
+        team2: {
+          coachName: p.team2?.coachName || '',
+          teamName: p.team2?.teamName || 'Equipe 2',
+          headerColor: p.team2?.headerColor || 'red',
+          scoreMatch: p.team2?.scoreMatch !== undefined && p.team2?.scoreMatch !== '' ? String(p.team2.scoreMatch) : '0',
+          scoreOpponent: p.team2?.scoreOpponent !== undefined && p.team2?.scoreOpponent !== '' ? String(p.team2.scoreOpponent) : '0',
+          shootoutScore: p.team2?.shootoutScore || '',
+          shootoutOpponent: p.team2?.shootoutOpponent || '',
+          result: p.team2?.result || '',
+          points: p.team2?.points !== undefined && p.team2?.points !== '' ? String(p.team2.points) : '0',
+          titulaires: Array.isArray(p.team2?.titulaires) ? p.team2.titulaires : [],
+          remplacants: Array.isArray(p.team2?.remplacants) ? p.team2.remplacants : [],
+        },
+      })),
+      roster: Array.isArray(target.roster) ? target.roster : [],
+    };
+
+    return {
+      success: true,
+      data: normalizedMatch,
+      metadata: parsed._exportMeta || undefined,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: `Erreur de lecture du JSON : ${err.message || 'Syntaxe non reconnue'}`,
+    };
+  }
 }
 
 export const SCHEDULE_STORAGE_KEY = 'fe12_match_schedule_v1';
@@ -352,7 +504,7 @@ export function saveMatchSchedule(schedule: import('../types').ScheduledMatch[])
 // Coaches History Management (localStorage)
 // ----------------------------------------------------
 const COACHES_STORAGE_KEY = 'fe12_coaches_history_v1';
-const DEFAULT_COACHES = ['Seb', 'Miguel', 'Alex', 'David', 'Thomas', 'Julien'];
+const DEFAULT_COACHES = ['Miguel R.', 'Miguel', 'Sébastien M.', 'Seb', 'Alex', 'David', 'Thomas', 'Julien'];
 
 export function loadCoachesHistory(): string[] {
   try {

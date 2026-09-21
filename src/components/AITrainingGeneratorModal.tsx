@@ -26,7 +26,12 @@ import {
   Play,
   RotateCcw,
   History,
-  Wand2
+  Wand2,
+  Maximize2,
+  Columns,
+  LayoutGrid,
+  Timer,
+  CheckCircle2
 } from 'lucide-react';
 import { TrainingSession } from '../types';
 import { 
@@ -39,6 +44,9 @@ import {
 } from '../utils/aiTrainingGenerator';
 import { getAvailableSeasons, getSeasonFromDate } from '../utils/season';
 import { ExerciseAnimationModal } from './ExerciseAnimationModal';
+import { InlineExerciseAnimationPlayer } from './InlineExerciseAnimationPlayer';
+import { FormattedDrillDescription } from './FormattedDrillDescription';
+import { extractDrillSlotText } from '../utils/drillAnimations';
 
 interface AITrainingGeneratorModalProps {
   isOpen: boolean;
@@ -54,8 +62,8 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
   isOpen,
   onClose,
   onApplySession,
-  defaultCoach = 'Sébastien M.',
-  defaultAssistantCoach = 'Miguel R.',
+  defaultCoach = 'Miguel R.',
+  defaultAssistantCoach = 'Sébastien M.',
   defaultCategory = 'FE12 Bas-Valais',
   defaultSeason,
 }) => {
@@ -94,12 +102,62 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
     title: string;
     description: string;
     focus: string;
+    slotName?: 'Dessin 1' | 'Dessin 2' | 'Complet';
   }>({
     isOpen: false,
     title: '',
     description: '',
     focus: '',
+    slotName: 'Dessin 1',
   });
+
+  // State for layout & interactive exercise animation viewer
+  const [selectedPartKey, setSelectedPartKey] = useState<'initialPart' | 'playedForms' | 'finalGame'>('initialPart');
+  const [selectedSlotKey, setSelectedSlotKey] = useState<'Dessin 1' | 'Dessin 2' | 'Complet'>('Dessin 1');
+  const [dispositionMode, setDispositionMode] = useState<'split' | 'summary'>('split');
+  const [syncNotification, setSyncNotification] = useState<string | null>(null);
+
+  // Compute active part data for split layout
+  const currentPartData = useMemo(() => {
+    if (!generatedSession) return null;
+    const part = generatedSession[selectedPartKey];
+    const focus = selectedPartKey === 'initialPart'
+      ? generatedSession.themeTE.description
+      : selectedPartKey === 'playedForms'
+      ? generatedSession.themeTA.description
+      : `${generatedSession.themeTE.description} / ${generatedSession.themeTA.description}`;
+
+    const partNumber = selectedPartKey === 'initialPart' ? '1' : selectedPartKey === 'playedForms' ? '2' : '3';
+    const partName = selectedPartKey === 'initialPart'
+      ? 'Partie Initiale (TE/KO)'
+      : selectedPartKey === 'playedForms'
+      ? 'Formes Jouées (TA)'
+      : 'Jeu Final (TE/TA 7 contre 7)';
+    const partThemeType = selectedPartKey === 'initialPart'
+      ? 'Technique & Motricité'
+      : selectedPartKey === 'playedForms'
+      ? 'Tactique Fondamentale'
+      : 'Application Match 7v7';
+    const partColor = selectedPartKey === 'initialPart'
+      ? 'border-red-300 bg-red-50 text-red-800'
+      : selectedPartKey === 'playedForms'
+      ? 'border-blue-300 bg-blue-50 text-blue-800'
+      : 'border-indigo-300 bg-indigo-50 text-indigo-800';
+
+    const desc = part?.description || '';
+    const hasMultiple = /Dessin\s*[12]|Atelier\s*[12]/i.test(desc);
+
+    return {
+      part,
+      focus,
+      partKey: selectedPartKey,
+      partNumber,
+      partName,
+      partThemeType,
+      partColor,
+      hasMultiple
+    };
+  }, [generatedSession, selectedPartKey]);
 
   const categoriesList: Array<{ id: 'Tous' | ASFThemeCategory; label: string; icon: string }> = [
     { id: 'Tous', label: 'Tous les thèmes', icon: '🌟' },
@@ -205,8 +263,8 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
         themeDescription: `${generatedSession.title} - TE: ${generatedSession.themeTE?.description} - TA: ${generatedSession.themeTA?.description}`,
         focus,
         category,
-        coach: generatedSession.coach?.split(' ')[0] || coach?.split(' ')[0] || 'SEB',
-        assistantCoach: generatedSession.assistantCoach?.split(' ')[0] || assistantCoach?.split(' ')[0] || 'Miguel',
+        coach: generatedSession.coach?.split(' ')[0] || coach?.split(' ')[0] || 'Miguel',
+        assistantCoach: generatedSession.assistantCoach?.split(' ')[0] || assistantCoach?.split(' ')[0] || 'SEB',
         customPrompt: regenerationInstructions,
         variation: activeVariation,
         regenerationAttempt: regenerationAttempt + 1,
@@ -328,7 +386,7 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
 
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-300 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden text-slate-800">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-300 w-full max-w-6xl xl:max-w-7xl max-h-[94vh] flex flex-col overflow-hidden text-slate-800">
         
         {/* Header with ASF Swiss Football Branding */}
         <div className="bg-gradient-to-r from-red-700 via-red-800 to-slate-900 text-white px-6 py-4 flex items-center justify-between shadow-md">
@@ -421,7 +479,7 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
               <div className="bg-white/80 rounded-xl p-2.5 border border-red-100 shadow-2xs">
                 <span className="font-extrabold text-red-800 block mb-0.5">2. Structure en 3 Parties</span>
                 <p className="text-[11px] text-slate-600 leading-tight">
-                  Partie Initiale (TE/KO) → Formes Jouées (TA) → Jeu Final d'application (TE/TA 6v6).
+                  Partie Initiale (TE/KO) → Formes Jouées (TA) → Jeu Final d'application (TE/TA 7 contre 7).
                 </p>
               </div>
               <div className="bg-white/80 rounded-xl p-2.5 border border-red-100 shadow-2xs">
@@ -606,7 +664,7 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                           desc: 'Les défenseurs coulissent en bloc, orientent la relance adverse vers l\'extérieur et déclenchent le pressing à la passe latérale pour intercepter.'
                         },
                         {
-                          title: 'Jeu de position 6v6 + 2 jokers (largeur et profondeur)',
+                          title: 'Jeu de position 7v7 + 2 jokers (largeur et profondeur)',
                           phase: 'OFF' as const,
                           desc: 'Jeu de possession sur terrain réduit avec 2 appuis extérieurs. L\'objectif est de fixer d\'un côté pour trouver le joker libre dans l\'intervalle opposé.'
                         }
@@ -618,7 +676,7 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                             setThemeTitle(item.title);
                             setPhase(item.phase);
                             setClubCornerText(item.desc);
-                            setSpecificInstructions(`Exercice ClubCorner : ${item.title}\nDescription : ${item.desc}\nAppliquer la règle des 3 parties FootEco (TE/KO, TA, Jeu final).`);
+                            setSpecificInstructions(`Exercice ClubCorner : ${item.title}\nDescription : ${item.desc}\nAppliquer la règle des 3 parties FootEco (TE/KO, TA, Jeu final 7v7).`);
                           }}
                           className="px-2.5 py-1 bg-white hover:bg-red-50 hover:border-red-300 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer text-left"
                         >
@@ -639,7 +697,7 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                       onChange={(e) => {
                         const val = e.target.value;
                         setClubCornerText(val);
-                        setSpecificInstructions(`Exercice importé depuis ClubCorner : \n${val}\n\nStructurer obligatoirement selon les 3 parties FootEco (Partie Initiale TE/KO avec 2 ateliers, Formes Jouées TA avec 2 ateliers, Jeu Final 6v6).`);
+                        setSpecificInstructions(`Exercice importé depuis ClubCorner : \n${val}\n\nStructurer obligatoirement selon les 3 parties FootEco (Partie Initiale TE/KO avec 2 ateliers, Formes Jouées TA avec 2 ateliers, Jeu Final 7 contre 7).`);
                         if (!themeTitle || themeTitle === ASF_THEMATIC_PRESETS[0].label) {
                           const firstLine = val.split('\n')[0].replace(/[#*-]/g, '').trim();
                           if (firstLine && firstLine.length < 80) {
@@ -647,7 +705,7 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                           }
                         }
                       }}
-                      placeholder="Exemple : Collez ici l'intitulé, les règles, le nombre de joueurs (ex: 4v2, 6v6), les dimensions du terrain ou les objectifs pédagogiques relevés sur ClubCorner..."
+                      placeholder="Exemple : Collez ici l'intitulé, les règles, le nombre de joueurs (ex: 4v2, 7v7), les dimensions du terrain ou les objectifs pédagogiques relevés sur ClubCorner..."
                       className="w-full bg-white border border-slate-300 rounded-xl p-3 text-xs font-medium focus:border-red-500 focus:outline-none shadow-inner"
                     />
                   </div>
@@ -705,7 +763,7 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                       type="text"
                       value={coach}
                       onChange={(e) => setCoach(e.target.value)}
-                      placeholder="Sébastien M."
+                      placeholder="Miguel R."
                       className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-semibold focus:border-red-500 focus:outline-none"
                     />
                   </div>
@@ -716,7 +774,7 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                       type="text"
                       value={assistantCoach}
                       onChange={(e) => setAssistantCoach(e.target.value)}
-                      placeholder="Miguel R."
+                      placeholder="Sébastien M."
                       className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-semibold focus:border-red-500 focus:outline-none"
                     />
                   </div>
@@ -978,27 +1036,312 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                   </div>
                 </div>
 
-                {/* 3 Exercises preview */}
-                <div className="space-y-2">
-                  <span className="font-extrabold text-xs text-slate-800">
-                    Déroulement FootEco en 3 Parties (Jouer - Jouer - Jouer) :
-                  </span>
-                  
-                  {/* Part 1 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs flex gap-3 hover:border-slate-300 transition-colors">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
-                        <span className="text-red-900 font-black">1. {generatedSession.initialPart.title}</span>
-                        <div className="flex items-center gap-1.5">
+                {/* FootEco 3-Part Navigation Bar & Disposition Switcher */}
+                <div className="bg-slate-100 border border-slate-200 rounded-2xl p-2.5 flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
+                  {/* Part Selector Tabs */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-black uppercase text-slate-500 mr-1 hidden sm:inline">
+                      Ateliers :
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPartKey('initialPart');
+                        setSelectedSlotKey('Dessin 1');
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                        selectedPartKey === 'initialPart'
+                          ? 'bg-red-700 text-white shadow-xs scale-102'
+                          : 'bg-white hover:bg-slate-200/80 text-slate-700 border border-slate-200'
+                      }`}
+                    >
+                      <span className="w-4 h-4 rounded-full bg-red-800/40 text-[10px] flex items-center justify-center font-bold">1</span>
+                      <span>1. Initiale (TE/KO)</span>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.2 rounded-md ${selectedPartKey === 'initialPart' ? 'bg-red-900/60 text-red-100' : 'bg-slate-100 text-slate-500'}`}>
+                        {generatedSession.initialPart.duration}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPartKey('playedForms');
+                        setSelectedSlotKey('Dessin 1');
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                        selectedPartKey === 'playedForms'
+                          ? 'bg-blue-700 text-white shadow-xs scale-102'
+                          : 'bg-white hover:bg-slate-200/80 text-slate-700 border border-slate-200'
+                      }`}
+                    >
+                      <span className="w-4 h-4 rounded-full bg-blue-800/40 text-[10px] flex items-center justify-center font-bold">2</span>
+                      <span>2. Formes Jouées (TA)</span>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.2 rounded-md ${selectedPartKey === 'playedForms' ? 'bg-blue-900/60 text-blue-100' : 'bg-slate-100 text-slate-500'}`}>
+                        {generatedSession.playedForms.duration}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPartKey('finalGame');
+                        setSelectedSlotKey('Dessin 1');
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                        selectedPartKey === 'finalGame'
+                          ? 'bg-indigo-700 text-white shadow-xs scale-102'
+                          : 'bg-white hover:bg-slate-200/80 text-slate-700 border border-slate-200'
+                      }`}
+                    >
+                      <span className="w-4 h-4 rounded-full bg-indigo-800/40 text-[10px] flex items-center justify-center font-bold">3</span>
+                      <span>3. Jeu Final 7v7</span>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.2 rounded-md ${selectedPartKey === 'finalGame' ? 'bg-indigo-900/60 text-indigo-100' : 'bg-slate-100 text-slate-500'}`}>
+                        {generatedSession.finalGame.duration}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Disposition Mode Toggle */}
+                  <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => setDispositionMode('split')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                        dispositionMode === 'split'
+                          ? 'bg-slate-900 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
+                      title="Disposition studio scindée : description et animation tactique interactive côte à côte"
+                    >
+                      <Columns className="w-3.5 h-3.5" />
+                      <span>Studio Scindé</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDispositionMode('summary')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                        dispositionMode === 'summary'
+                          ? 'bg-slate-900 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
+                      title="Vue globale synthétique des 3 ateliers de la séance"
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5" />
+                      <span>Vue Synthèse</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Feedback Toast if any */}
+                {syncNotification && (
+                  <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <span>{syncNotification}</span>
+                  </div>
+                )}
+
+                {/* SPLIT STUDIO LAYOUT: Active Exercise Card + Inline Tactical Animation Player */}
+                {dispositionMode === 'split' && currentPartData && (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                    {/* Left Column: Detailed Exercise Description & Sub-Ateliers */}
+                    <div className="lg:col-span-6 space-y-3">
+                      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3.5">
+                        
+                        {/* Header of Active Part */}
+                        <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${currentPartData.partColor}`}>
+                                {currentPartData.partName}
+                              </span>
+                              <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
+                                <Timer className="w-3.5 h-3.5 text-slate-400" />
+                                {currentPartData.part.duration}
+                              </span>
+                            </div>
+                            <h4 className="text-sm sm:text-base font-black text-slate-900 leading-snug">
+                              {currentPartData.part.title}
+                            </h4>
+                          </div>
+
+                          {/* Quick Actions Header */}
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleRegeneratePart(currentPartData.partKey)}
+                              disabled={regeneratingSection === currentPartData.partKey}
+                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-[11px] font-black flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                              title="Régénérer uniquement cet atelier avec l'IA"
+                            >
+                              <RefreshCw className={`w-3 h-3 ${regeneratingSection === currentPartData.partKey ? 'animate-spin text-amber-600' : 'text-slate-600'}`} />
+                              <span className="hidden sm:inline">Régénérer</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setAnimModalData({
+                                isOpen: true,
+                                title: currentPartData.part.title,
+                                description: currentPartData.part.description,
+                                focus: currentPartData.focus,
+                                slotName: selectedSlotKey
+                              })}
+                              className="px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                              title="Ouvrir le studio d'animation complet en plein écran avec joueurs déplaçables"
+                            >
+                              <Maximize2 className="w-3 h-3" />
+                              <span className="hidden sm:inline">Plein Écran</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Formatted Drill Description with clear separation between Atelier 1 & Atelier 2 */}
+                        <div className="max-h-[420px] overflow-y-auto pr-1">
+                          <FormattedDrillDescription
+                            description={currentPartData.part.description}
+                            drawing1Caption={currentPartData.part.drawing1?.caption}
+                            drawing2Caption={currentPartData.part.drawing2?.caption}
+                            drawing1Coach={currentPartData.part.drawing1?.coach || generatedSession.coach}
+                            drawing2Coach={currentPartData.part.drawing2?.coach || generatedSession.assistantCoach}
+                            selectedSlotKey={selectedSlotKey}
+                            onSelectSlot={(slot) => setSelectedSlotKey(slot)}
+                          />
+                        </div>
+
+                        {/* Coaching & FootEco Reminders Card */}
+                        <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 text-xs flex items-start gap-2.5">
+                          <div className="p-1 rounded-lg bg-amber-200 text-amber-900 flex-shrink-0 mt-0.5">
+                            <Target className="w-3.5 h-3.5" />
+                          </div>
+                          <div>
+                            <span className="font-extrabold text-amber-950 block text-[11px] uppercase tracking-wider">
+                              Accents FootEco ASF & Objectifs de Coaching :
+                            </span>
+                            <p className="text-[11px] text-amber-900 mt-0.5">
+                              {currentPartData.focus}
+                            </p>
+                            {currentPartData.part.remarks && (
+                              <p className="text-[10px] text-amber-800 mt-1 italic">
+                                Note : {currentPartData.part.remarks}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Footer Sub-actions */}
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                          <span className="flex items-center gap-1 text-slate-600 font-medium">
+                            <Zap className="w-3 h-3 text-amber-600" />
+                            Règle des 3 secondes FootEco appliquée
+                          </span>
+                          <span className="text-slate-400">
+                            Saison {generatedSession.season} • {generatedSession.team}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column: Live Interactive Exercise Animation Player */}
+                    <div className="lg:col-span-6 space-y-2.5 sticky top-2">
+                      <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-xs space-y-2.5">
+                        <div className="flex items-center justify-between px-1">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                              Visualisation Tactique & Animation IA
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                            {selectedSlotKey === 'Complet' ? 'Vue Globale' : selectedSlotKey}
+                          </span>
+                        </div>
+
+                        {/* The Interactive Inline Animation Player */}
+                        <InlineExerciseAnimationPlayer
+                          partTitle={currentPartData.part.title}
+                          partDescription={currentPartData.part.description}
+                          partFocus={currentPartData.focus}
+                          slotName={selectedSlotKey}
+                          category={category}
+                          onOpenFullscreen={() => setAnimModalData({
+                            isOpen: true,
+                            title: currentPartData.part.title,
+                            description: currentPartData.part.description,
+                            focus: currentPartData.focus,
+                            slotName: selectedSlotKey
+                          })}
+                          onAutoAlign={() => {
+                            setSyncNotification('Animation tactique resynchronisée avec le texte de l\'atelier !');
+                            setTimeout(() => setSyncNotification(null), 3000);
+                          }}
+                        />
+
+                        {/* Explanatory FootEco Banner */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-[11px] text-slate-600 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">⚽</span>
+                            <span>
+                              <strong>Trajectoires 3D & Déplacements :</strong> Les joueurs s'orientent face au jeu et les passes/tirs simulent la trajectoire aérienne FootEco.
+                            </span>
+                          </div>
                           <button
                             type="button"
-                            onClick={() => handleRegeneratePart('initialPart')}
-                            disabled={regeneratingSection === 'initialPart'}
-                            className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-md text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
-                            title="Régénérer uniquement cet atelier TE/KO"
+                            onClick={() => setAnimModalData({
+                              isOpen: true,
+                              title: currentPartData.part.title,
+                              description: currentPartData.part.description,
+                              focus: currentPartData.focus,
+                              slotName: selectedSlotKey
+                            })}
+                            className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 flex-shrink-0 cursor-pointer"
                           >
-                            <RefreshCw className={`w-2.5 h-2.5 ${regeneratingSection === 'initialPart' ? 'animate-spin' : ''}`} />
-                            <span>Régénérer</span>
+                            <Maximize2 className="w-2.5 h-2.5" />
+                            <span>Plein écran</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* SUMMARY MODE: All 3 Parts in Overview Cards */}
+                {dispositionMode === 'summary' && (
+                  <div className="space-y-3">
+                    <span className="font-extrabold text-xs text-slate-800 flex items-center justify-between">
+                      <span>Déroulement FootEco en 3 Parties (Jouer - Jouer - Jouer) :</span>
+                      <span className="text-[11px] text-slate-500 font-normal">
+                        Cliquez sur "Studio" pour visualiser l'animation interactive de chaque atelier
+                      </span>
+                    </span>
+
+                    {/* Part 1 */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 text-xs flex flex-col sm:flex-row gap-4 hover:border-slate-300 transition-all shadow-2xs">
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center justify-between font-bold text-slate-800">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-red-100 text-red-800 flex items-center justify-center text-[10px] font-black">1</span>
+                            <span className="text-red-900 font-black text-sm">{generatedSession.initialPart.title}</span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded-full">
+                            {generatedSession.initialPart.duration}
+                          </span>
+                        </div>
+                        <p className="text-slate-600 line-clamp-3 text-[11px] whitespace-pre-line leading-relaxed">
+                          {generatedSession.initialPart.description}
+                        </p>
+                        <div className="flex items-center gap-2 pt-1 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPartKey('initialPart');
+                              setSelectedSlotKey('Dessin 1');
+                              setDispositionMode('split');
+                            }}
+                            className="px-2.5 py-1 bg-red-700 hover:bg-red-800 text-white rounded-lg text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                          >
+                            <Columns className="w-2.5 h-2.5" />
+                            <span>Voir dans le Studio & Animation</span>
                           </button>
                           <button
                             type="button"
@@ -1006,44 +1349,60 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                               isOpen: true,
                               title: generatedSession.initialPart.title,
                               description: generatedSession.initialPart.description,
-                              focus: generatedSession.themeTE.description
+                              focus: generatedSession.themeTE.description,
+                              slotName: 'Dessin 1'
                             })}
-                            className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-md text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
-                            title="Voir l'animation de cet atelier"
+                            className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
                           >
                             <Play className="w-2.5 h-2.5 fill-red-600 text-red-600" />
-                            <span>Animation</span>
+                            <span>Plein Écran</span>
                           </button>
-                          <span className="text-[11px] text-slate-500 font-medium">{generatedSession.initialPart.duration}</span>
-                        </div>
-                      </div>
-                      <p className="text-slate-600 line-clamp-2 text-[11px] whitespace-pre-line">
-                        {generatedSession.initialPart.description}
-                      </p>
-                    </div>
-                    {generatedSession.initialPart.drawing1?.image && (
-                      <div 
-                        className="w-16 h-12 flex-shrink-0 bg-emerald-800 rounded-lg overflow-hidden border border-emerald-700 shadow-2xs"
-                        dangerouslySetInnerHTML={{ __html: generatedSession.initialPart.drawing1.image }}
-                      />
-                    )}
-                  </div>
-
-                  {/* Part 2 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs flex gap-3 hover:border-slate-300 transition-colors">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
-                        <span className="text-blue-900 font-black">2. {generatedSession.playedForms.title}</span>
-                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => handleRegeneratePart('playedForms')}
-                            disabled={regeneratingSection === 'playedForms'}
-                            className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-md text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
-                            title="Régénérer uniquement ces formes jouées TA"
+                            onClick={() => handleRegeneratePart('initialPart')}
+                            disabled={regeneratingSection === 'initialPart'}
+                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
                           >
-                            <RefreshCw className={`w-2.5 h-2.5 ${regeneratingSection === 'playedForms' ? 'animate-spin' : ''}`} />
+                            <RefreshCw className={`w-2.5 h-2.5 ${regeneratingSection === 'initialPart' ? 'animate-spin text-amber-600' : ''}`} />
                             <span>Régénérer</span>
+                          </button>
+                        </div>
+                      </div>
+                      {generatedSession.initialPart.drawing1?.image && (
+                        <div 
+                          className="w-24 h-18 sm:w-28 sm:h-20 flex-shrink-0 bg-emerald-800 rounded-xl overflow-hidden border border-emerald-700 shadow-2xs self-center"
+                          dangerouslySetInnerHTML={{ __html: generatedSession.initialPart.drawing1.image }}
+                        />
+                      )}
+                    </div>
+
+                    {/* Part 2 */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 text-xs flex flex-col sm:flex-row gap-4 hover:border-slate-300 transition-all shadow-2xs">
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center justify-between font-bold text-slate-800">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-[10px] font-black">2</span>
+                            <span className="text-blue-900 font-black text-sm">{generatedSession.playedForms.title}</span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded-full">
+                            {generatedSession.playedForms.duration}
+                          </span>
+                        </div>
+                        <p className="text-slate-600 line-clamp-3 text-[11px] whitespace-pre-line leading-relaxed">
+                          {generatedSession.playedForms.description}
+                        </p>
+                        <div className="flex items-center gap-2 pt-1 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPartKey('playedForms');
+                              setSelectedSlotKey('Dessin 1');
+                              setDispositionMode('split');
+                            }}
+                            className="px-2.5 py-1 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                          >
+                            <Columns className="w-2.5 h-2.5" />
+                            <span>Voir dans le Studio & Animation</span>
                           </button>
                           <button
                             type="button"
@@ -1051,44 +1410,60 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                               isOpen: true,
                               title: generatedSession.playedForms.title,
                               description: generatedSession.playedForms.description,
-                              focus: generatedSession.themeTA.description
+                              focus: generatedSession.themeTA.description,
+                              slotName: 'Dessin 1'
                             })}
-                            className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-md text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
-                            title="Voir l'animation de cet atelier"
+                            className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
                           >
-                            <Play className="w-2.5 h-2.5 fill-red-600 text-red-600" />
-                            <span>Animation</span>
+                            <Play className="w-2.5 h-2.5 fill-blue-600 text-blue-600" />
+                            <span>Plein Écran</span>
                           </button>
-                          <span className="text-[11px] text-slate-500 font-medium">{generatedSession.playedForms.duration}</span>
-                        </div>
-                      </div>
-                      <p className="text-slate-600 line-clamp-2 text-[11px] whitespace-pre-line">
-                        {generatedSession.playedForms.description}
-                      </p>
-                    </div>
-                    {generatedSession.playedForms.drawing1?.image && (
-                      <div 
-                        className="w-16 h-12 flex-shrink-0 bg-emerald-800 rounded-lg overflow-hidden border border-emerald-700 shadow-2xs"
-                        dangerouslySetInnerHTML={{ __html: generatedSession.playedForms.drawing1.image }}
-                      />
-                    )}
-                  </div>
-
-                  {/* Part 3 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs flex gap-3 hover:border-slate-300 transition-colors">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
-                        <span className="text-indigo-900 font-black">3. {generatedSession.finalGame.title}</span>
-                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => handleRegeneratePart('finalGame')}
-                            disabled={regeneratingSection === 'finalGame'}
-                            className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-md text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
-                            title="Régénérer uniquement le jeu final 6v6"
+                            onClick={() => handleRegeneratePart('playedForms')}
+                            disabled={regeneratingSection === 'playedForms'}
+                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
                           >
-                            <RefreshCw className={`w-2.5 h-2.5 ${regeneratingSection === 'finalGame' ? 'animate-spin' : ''}`} />
+                            <RefreshCw className={`w-2.5 h-2.5 ${regeneratingSection === 'playedForms' ? 'animate-spin text-amber-600' : ''}`} />
                             <span>Régénérer</span>
+                          </button>
+                        </div>
+                      </div>
+                      {generatedSession.playedForms.drawing1?.image && (
+                        <div 
+                          className="w-24 h-18 sm:w-28 sm:h-20 flex-shrink-0 bg-emerald-800 rounded-xl overflow-hidden border border-emerald-700 shadow-2xs self-center"
+                          dangerouslySetInnerHTML={{ __html: generatedSession.playedForms.drawing1.image }}
+                        />
+                      )}
+                    </div>
+
+                    {/* Part 3 */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 text-xs flex flex-col sm:flex-row gap-4 hover:border-slate-300 transition-all shadow-2xs">
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center justify-between font-bold text-slate-800">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-800 flex items-center justify-center text-[10px] font-black">3</span>
+                            <span className="text-indigo-900 font-black text-sm">{generatedSession.finalGame.title}</span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded-full">
+                            {generatedSession.finalGame.duration}
+                          </span>
+                        </div>
+                        <p className="text-slate-600 line-clamp-3 text-[11px] whitespace-pre-line leading-relaxed">
+                          {generatedSession.finalGame.description}
+                        </p>
+                        <div className="flex items-center gap-2 pt-1 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPartKey('finalGame');
+                              setSelectedSlotKey('Dessin 1');
+                              setDispositionMode('split');
+                            }}
+                            className="px-2.5 py-1 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                          >
+                            <Columns className="w-2.5 h-2.5" />
+                            <span>Voir dans le Studio & Animation</span>
                           </button>
                           <button
                             type="button"
@@ -1096,36 +1471,41 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                               isOpen: true,
                               title: generatedSession.finalGame.title,
                               description: generatedSession.finalGame.description,
-                              focus: generatedSession.themeTE.description
+                              focus: generatedSession.themeTE.description,
+                              slotName: 'Dessin 1'
                             })}
-                            className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-md text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
-                            title="Voir l'animation de cet atelier"
+                            className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
                           >
-                            <Play className="w-2.5 h-2.5 fill-red-600 text-red-600" />
-                            <span>Animation</span>
+                            <Play className="w-2.5 h-2.5 fill-indigo-600 text-indigo-600" />
+                            <span>Plein Écran</span>
                           </button>
-                          <span className="text-[11px] text-slate-500 font-medium">{generatedSession.finalGame.duration}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRegeneratePart('finalGame')}
+                            disabled={regeneratingSection === 'finalGame'}
+                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            <RefreshCw className={`w-2.5 h-2.5 ${regeneratingSection === 'finalGame' ? 'animate-spin text-amber-600' : ''}`} />
+                            <span>Régénérer</span>
+                          </button>
                         </div>
                       </div>
-                      <p className="text-slate-600 line-clamp-2 text-[11px] whitespace-pre-line">
-                        {generatedSession.finalGame.description}
-                      </p>
+                      {generatedSession.finalGame.drawing1?.image && (
+                        <div 
+                          className="w-24 h-18 sm:w-28 sm:h-20 flex-shrink-0 bg-emerald-800 rounded-xl overflow-hidden border border-emerald-700 shadow-2xs self-center"
+                          dangerouslySetInnerHTML={{ __html: generatedSession.finalGame.drawing1.image }}
+                        />
+                      )}
                     </div>
-                    {generatedSession.finalGame.drawing1?.image && (
-                      <div 
-                        className="w-16 h-12 flex-shrink-0 bg-emerald-800 rounded-lg overflow-hidden border border-emerald-700 shadow-2xs"
-                        dangerouslySetInnerHTML={{ __html: generatedSession.finalGame.drawing1.image }}
-                      />
-                    )}
                   </div>
-                </div>
+                )}
 
-                {/* Individualization */}
-                <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs">
-                  <span className="font-extrabold text-slate-800 block mb-0.5">
+                {/* Individualization & ASF Debriefing */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 text-xs space-y-1">
+                  <span className="font-extrabold text-slate-800 block">
                     Individualisation & Bilan ASF :
                   </span>
-                  <p className="text-[11px] text-slate-600">
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
                     {generatedSession.remarksAndIndividualization}
                   </p>
                 </div>
@@ -1210,6 +1590,7 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
           partTitle={animModalData.title}
           partDescription={animModalData.description}
           partFocus={animModalData.focus}
+          slotName={animModalData.slotName}
           category={category}
         />
       )}

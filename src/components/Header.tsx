@@ -32,12 +32,14 @@ import {
   BookOpen,
   Copy,
   Maximize2,
-  Minimize2
+  Minimize2,
+  FileJson,
+  AlertCircle
 } from 'lucide-react';
-import { exportMatchAsJSON } from '../utils/storage';
+import { exportMatchAsJSON, parseAndValidateMatchJSON } from '../utils/storage';
 import { getInitialMatchData } from '../initialData';
 import { exportMatchToExcel } from '../utils/excelExport';
-import { exportMatchToPdf } from '../utils/pdfExport';
+import { exportMatchToPdf, generateOfficialSheetPdf } from '../utils/pdfExport';
 import { PeriodPdfPreviewModal } from './PeriodPdfPreviewModal';
 import { ExportMatchModal } from './ExportMatchModal';
 import { CopyCompoModal } from './CopyCompoModal';
@@ -64,6 +66,8 @@ interface HeaderProps {
   onOpenTimerModal: () => void;
   onOpenCalendarModal?: () => void;
   onOpenTrainingModal?: () => void;
+  appMode?: 'match' | 'training';
+  onSelectAppMode?: (mode: 'match' | 'training') => void;
   activePeriodIndex: number;
   timerSecondsLeft: number;
   isTimerRunning: boolean;
@@ -87,6 +91,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenTimerModal,
   onOpenCalendarModal,
   onOpenTrainingModal,
+  appMode = 'match',
+  onSelectAppMode,
   activePeriodIndex,
   timerSecondsLeft,
   isTimerRunning,
@@ -110,6 +116,13 @@ export const Header: React.FC<HeaderProps> = ({
   const [showCopyCompoModal, setShowCopyCompoModal] = useState(false);
   const [copyNotification, setCopyNotification] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [jsonExportSuccess, setJsonExportSuccess] = useState<string | null>(null);
+  const [jsonToast, setJsonToast] = useState<string | null>(null);
+  const [importConfirmMatch, setImportConfirmMatch] = useState<{
+    match: MatchData;
+    filename: string;
+    meta?: any;
+  } | null>(null);
 
   // Fullscreen event listener to keep state in sync
   useEffect(() => {
@@ -186,7 +199,7 @@ export const Header: React.FC<HeaderProps> = ({
   const handleExportPdf = async () => {
     setIsExportingPdf(true);
     try {
-      const success = await exportMatchToPdf(matchData);
+      const success = await generateOfficialSheetPdf(matchData, { allPeriodsMultiPage: true });
       if (success) {
         setPdfExportSuccess(true);
         setTimeout(() => setPdfExportSuccess(false), 2500);
@@ -250,18 +263,32 @@ export const Header: React.FC<HeaderProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleQuickExportJSON = () => {
+    try {
+      const res = exportMatchAsJSON(matchData);
+      setJsonExportSuccess(res.filename);
+      setJsonToast(`Sauvegarde JSON téléchargée (${res.filename}, ${res.sizeKb} Ko) !`);
+      setTimeout(() => {
+        setJsonExportSuccess(null);
+        setJsonToast(null);
+      }, 3500);
+    } catch (err) {
+      console.error('Erreur export JSON:', err);
+    }
+  };
+
   const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const filename = file.name;
     const reader = new FileReader();
     reader.onload = (event) => {
-      try {
-        const parsed = JSON.parse(event.target?.result as string);
-        if (parsed && Array.isArray(parsed.periods)) {
-          onUpdateMatch(() => parsed);
-        }
-      } catch (err) {
-        alert('Fichier JSON invalide');
+      const content = event.target?.result as string;
+      const res = parseAndValidateMatchJSON(content);
+      if (res.success && res.data) {
+        setImportConfirmMatch({ match: res.data, filename, meta: res.metadata });
+      } else {
+        alert(res.error || 'Le fichier JSON sélectionné n\'a pas pu être validé.');
       }
     };
     reader.readAsText(file);
@@ -314,6 +341,44 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
+        {/* Main Navigation Mode Switcher : Feuille de Match vs Mode Entraînement */}
+        <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/90 shadow-2xs">
+          <button
+            type="button"
+            id="nav-mode-match-btn"
+            onClick={() => onSelectAppMode?.('match')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+              appMode === 'match'
+                ? 'bg-white text-slate-900 shadow-xs border border-slate-200 ring-1 ring-emerald-500/30'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+            }`}
+            title="Basculer vers les feuilles de match (4 périodes, composition, chrono, rotation)"
+          >
+            <Trophy className={`w-3.5 h-3.5 ${appMode === 'match' ? 'text-amber-500' : 'text-slate-400'}`} />
+            <span>Feuille de Match</span>
+          </button>
+
+          <button
+            type="button"
+            id="nav-mode-training-btn"
+            onClick={() => onSelectAppMode?.('training')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+              appMode === 'training'
+                ? 'bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-400/40'
+                : 'text-slate-700 hover:text-emerald-900 hover:bg-emerald-50'
+            }`}
+            title="Basculer vers la gestion dédiée aux séances d'entraînement, exercices et schémas tactiques"
+          >
+            <ClipboardCheck className="w-3.5 h-3.5" />
+            <span>Mode Entraînement</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+              appMode === 'training' ? 'bg-emerald-700 text-amber-200' : 'bg-emerald-100 text-emerald-800'
+            }`}>
+              Séances & Schémas
+            </span>
+          </button>
+        </div>
+
         {/* Global Action Toolbar */}
         <div className="flex items-center flex-wrap gap-2">
           {/* Quick Timer Launcher */}
@@ -357,15 +422,15 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           {/* Séances d'Entraînement (Fiches officielles) */}
-          {onOpenTrainingModal && (
+          {(onOpenTrainingModal || onSelectAppMode) && (
             <button
-              onClick={onOpenTrainingModal}
+              onClick={() => onSelectAppMode ? onSelectAppMode('training') : onOpenTrainingModal?.()}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all shadow-2xs ${
-                matchData.eventType === 'entrainement'
-                  ? 'bg-emerald-600 text-white hover:bg-emerald-700 border-emerald-700 ring-2 ring-emerald-400/40 animate-pulse'
+                appMode === 'training' || matchData.eventType === 'entrainement'
+                  ? 'bg-emerald-600 text-white hover:bg-emerald-700 border-emerald-700 ring-2 ring-emerald-400/40'
                   : 'text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border-emerald-300'
               }`}
-              title="Ouvrir le module des fiches de séances d'entraînement FootEco (Thèmes TE/TA, Schémas et Bilans)"
+              title="Basculer vers le mode des séances d'entraînement FootEco (Thèmes TE/TA, Schémas tactiques et Bilans)"
             >
               <ClipboardCheck className="w-3.5 h-3.5" />
               <span>Séances Entraînement</span>
@@ -419,16 +484,16 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Copier Compo</span>
           </button>
 
-          {/* Export Principal : Feuille active ou 4 Matchs (PDF & Excel) */}
+          {/* Export Principal : Feuille active ou 4 Matchs (PDF, Excel, JSON) */}
           <button
             id="btn-export-match-modal"
             type="button"
             onClick={() => setShowExportModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 rounded-lg shadow-2xs transition-all cursor-pointer ring-1 ring-indigo-500"
-            title="Exporter la feuille de match active ou les 4 périodes au format PDF ou fichier Excel avec scores, compositions et notes tactiques"
+            title="Exporter la feuille de match active ou les 4 périodes au format PDF, classeur Excel ou sauvegarde brute JSON"
           >
             <Download className="w-3.5 h-3.5 text-white shrink-0" />
-            <span>Exporter (PDF/Excel)</span>
+            <span>Exporter (PDF / Excel / JSON)</span>
           </button>
 
           {/* Export Excel (.xlsx - Les 4 Matchs) */}
@@ -526,22 +591,40 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
-          {/* Export JSON */}
+          {/* Export JSON (Sauvegarde complète de la rencontre) */}
           <button
-            onClick={() => exportMatchAsJSON(matchData)}
-            className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200"
-            title="Exporter en JSON"
+            id="btn-quick-export-json"
+            type="button"
+            onClick={handleQuickExportJSON}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg border shadow-2xs transition-all active:scale-95 cursor-pointer ${
+              jsonExportSuccess
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 ring-2 ring-emerald-200'
+                : 'text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border-indigo-200 hover:border-indigo-300'
+            }`}
+            title="Sauvegarder l'ensemble de la rencontre au format JSON (export complet 4 matchs & effectif)"
           >
-            <Download className="w-4 h-4" />
+            {jsonExportSuccess ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="hidden sm:inline">JSON exporté</span>
+              </>
+            ) : (
+              <>
+                <FileJson className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span className="hidden sm:inline">Sauvegarde JSON</span>
+              </>
+            )}
           </button>
 
-          {/* Import JSON */}
+          {/* Import JSON (Restauration d'une rencontre) */}
           <label
-            className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer"
-            title="Importer un fichier JSON"
+            id="btn-quick-import-json"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 rounded-lg border border-slate-300 shadow-2xs transition-all active:scale-95 cursor-pointer"
+            title="Importer une sauvegarde JSON pour restaurer une rencontre"
           >
-            <Upload className="w-4 h-4" />
-            <input type="file" accept=".json" onChange={handleImportJSON} className="hidden" />
+            <Upload className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+            <span className="hidden sm:inline">Importer JSON</span>
+            <input type="file" accept=".json,application/json" onChange={handleImportJSON} className="hidden" />
           </label>
 
           {/* Reset */}
@@ -886,7 +969,7 @@ export const Header: React.FC<HeaderProps> = ({
         onClose={() => setShowUsersModal(false)}
       />
 
-      {/* Complete Export Match Modal (Active Sheet / 4 Periods in PDF & Excel) */}
+      {/* Complete Export Match Modal (Active Sheet / 4 Periods in PDF, Excel & JSON) */}
       <ExportMatchModal
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
@@ -894,6 +977,11 @@ export const Header: React.FC<HeaderProps> = ({
         activePeriodIndex={activePeriodIndex}
         onOpenPdfPreviewModal={(pIdx, viewAll) => {
           setShowPeriodPdfModal(true);
+        }}
+        onImportMatch={(imported) => {
+          onUpdateMatch(() => imported);
+          setJsonToast(`Feuille de match restaurée avec succès !`);
+          setTimeout(() => setJsonToast(null), 3500);
         }}
       />
 
@@ -925,6 +1013,90 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border border-slate-700 animate-in fade-in slide-in-from-bottom-2 text-xs font-bold">
           <Check className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{copyNotification}</span>
+        </div>
+      )}
+
+      {/* JSON Toast */}
+      {jsonToast && (
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border border-slate-700 animate-in fade-in slide-in-from-bottom-2 text-xs font-bold">
+          <FileJson className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span>{jsonToast}</span>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Restoring Match from JSON */}
+      {importConfirmMatch && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-150"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 text-slate-900">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold shrink-0">
+                <FileJson className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 leading-tight">Restaurer la feuille de match</h3>
+                <p className="text-xs text-slate-500 truncate max-w-[280px]">{importConfirmMatch.filename}</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs space-y-2 mb-4">
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Rencontre :</span>
+                <span className="font-bold text-slate-800">{importConfirmMatch.match.matchTitle} vs {importConfirmMatch.match.opponent || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Date & Type :</span>
+                <span className="font-bold text-slate-800">{importConfirmMatch.match.date || 'Non définie'} • {getEventTypeConfig(importConfirmMatch.match.eventType).label}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Périodes :</span>
+                <span className="font-bold text-indigo-700">{importConfirmMatch.match.periods.length} périodes complètes</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Joueurs effectif :</span>
+                <span className="font-bold text-emerald-700">{importConfirmMatch.match.roster.length} joueurs</span>
+              </div>
+              {importConfirmMatch.meta?.exportedAt && (
+                <div className="flex justify-between pt-1 border-t border-slate-200 text-[11px]">
+                  <span className="text-slate-400">Sauvegarde générée le :</span>
+                  <span className="text-slate-600 font-mono text-[10px]">{new Date(importConfirmMatch.meta.exportedAt).toLocaleString('fr-CH')}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs mb-4 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                Attention : Le chargement de cette sauvegarde va remplacer les données de la rencontre actuellement affichée.
+              </span>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setImportConfirmMatch(null)}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onUpdateMatch(() => importConfirmMatch.match);
+                  const fname = importConfirmMatch.filename;
+                  setImportConfirmMatch(null);
+                  setJsonToast(`Feuille restaurée depuis "${fname}" !`);
+                  setTimeout(() => setJsonToast(null), 3500);
+                }}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+              >
+                Confirmer et Charger
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </header>

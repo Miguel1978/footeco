@@ -87,6 +87,7 @@ export interface TrainingDrawing {
   coach?: string; // Coach initial or name (e.g. "SEB", "Miguel")
   caption?: string; // Caption or drill sub-title
   animationScenario?: any; // Saved custom tactical drill animation scenario
+  scenarioId?: string; // Synchronized scenario id from AI schema or presets
 }
 
 export interface TrainingExercisePart {
@@ -97,6 +98,7 @@ export interface TrainingExercisePart {
   drawing1: TrainingDrawing;
   drawing2: TrainingDrawing;
   animationScenario?: any; // Saved custom tactical drill animation scenario for part
+  scenarioId?: string; // Synchronized scenario id from AI schema or presets
 }
 
 export interface TrainingSession {
@@ -104,8 +106,8 @@ export interface TrainingSession {
   title: string; // e.g. "Entraînement FE12 - Récupération & Duels"
   team: string; // e.g. "FE12 Bas-Valais"
   date: string; // YYYY-MM-DD
-  coach: string; // e.g. "Sébastien M."
-  assistantCoach?: string; // e.g. "Miguel R."
+  coach: string; // e.g. "Miguel R."
+  assistantCoach?: string; // e.g. "Sébastien M."
   season: string; // e.g. "2025/2026", "2026/2027"
   
   // Thème TE (Technique)

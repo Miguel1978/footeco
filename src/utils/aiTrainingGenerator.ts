@@ -1,5 +1,5 @@
 import { TrainingSession, TrainingExercisePart } from '../types';
-import { getPresetSvg, generateTailoredSvgFromExercise } from './pitchDiagrams';
+import { getPresetSvg, generateTailoredSvgFromExercise, extractScenarioIdFromSvg } from './pitchDiagrams';
 import { getSeasonFromDate } from './season';
 import { generateAsfSessionProcedural } from './asfProceduralGenerator';
 
@@ -321,7 +321,7 @@ export async function generateFullSessionWithAI(params: {
     description: initDesc,
     slotName: 'Dessin 1',
     partType: 'initialPart',
-    coach: raw.initialPart?.drawing1Coach || params.coach?.split(' ')[0] || 'SEB',
+    coach: raw.initialPart?.drawing1Coach || params.coach?.split(' ')[0] || 'Miguel',
     theme: raw.title || params.themeTitle,
   }) || getPresetSvg(raw.initialPart?.recommendedPreset1 || 'preset-init-1') || '';
 
@@ -330,7 +330,7 @@ export async function generateFullSessionWithAI(params: {
     description: initDesc,
     slotName: 'Dessin 2',
     partType: 'initialPart',
-    coach: raw.initialPart?.drawing2Coach || params.assistantCoach?.split(' ')[0] || 'Miguel',
+    coach: raw.initialPart?.drawing2Coach || params.assistantCoach?.split(' ')[0] || 'SEB',
     theme: raw.title || params.themeTitle,
   }) || getPresetSvg(raw.initialPart?.recommendedPreset2 || 'preset-init-2') || '';
 
@@ -339,7 +339,7 @@ export async function generateFullSessionWithAI(params: {
     description: formDesc,
     slotName: 'Dessin 1',
     partType: 'playedForms',
-    coach: raw.playedForms?.drawing1Coach || params.coach?.split(' ')[0] || 'SEB',
+    coach: raw.playedForms?.drawing1Coach || params.coach?.split(' ')[0] || 'Miguel',
     theme: raw.title || params.themeTitle,
   }) || getPresetSvg(raw.playedForms?.recommendedPreset1 || 'preset-form-1') || '';
 
@@ -348,7 +348,7 @@ export async function generateFullSessionWithAI(params: {
     description: formDesc,
     slotName: 'Dessin 2',
     partType: 'playedForms',
-    coach: raw.playedForms?.drawing2Coach || params.assistantCoach?.split(' ')[0] || 'Miguel',
+    coach: raw.playedForms?.drawing2Coach || params.assistantCoach?.split(' ')[0] || 'SEB',
     theme: raw.title || params.themeTitle,
   }) || getPresetSvg(raw.playedForms?.recommendedPreset2 || 'preset-form-2') || '';
 
@@ -367,8 +367,8 @@ export async function generateFullSessionWithAI(params: {
     team: formatStringOrArray(raw.team, params.category || 'FE12 Bas-Valais'),
     date: today,
     season: season,
-    coach: params.coach || 'Sébastien M.',
-    assistantCoach: params.assistantCoach || 'Miguel R.',
+    coach: params.coach || 'Miguel R.',
+    assistantCoach: params.assistantCoach || 'Sébastien M.',
     themeTE: {
       description: formatStringOrArray(raw.themeTE?.description),
       coachingAccents: formatStringOrArray(raw.themeTE?.coachingAccents),
@@ -388,15 +388,18 @@ export async function generateFullSessionWithAI(params: {
       focus: formatStringOrArray(raw.initialPart?.focus, 'Focus TE/KO'),
       duration: formatStringOrArray(raw.initialPart?.duration, '2X 15 min (Total 30 min)'),
       description: formatStringOrArray(raw.initialPart?.description),
+      scenarioId: raw.initialPart?.scenarioId || extractScenarioIdFromSvg(initSvg1),
       drawing1: {
         image: initSvg1,
-        coach: raw.initialPart?.drawing1Coach || params.coach?.split(' ')[0] || 'SEB',
+        coach: raw.initialPart?.drawing1Coach || params.coach?.split(' ')[0] || 'Miguel',
         caption: formatStringOrArray(raw.initialPart?.drawing1Caption, 'Atelier TE/KO 1'),
+        scenarioId: raw.initialPart?.drawing1ScenarioId || extractScenarioIdFromSvg(initSvg1),
       },
       drawing2: {
         image: initSvg2,
-        coach: raw.initialPart?.drawing2Coach || params.assistantCoach?.split(' ')[0] || 'Miguel',
+        coach: raw.initialPart?.drawing2Coach || params.assistantCoach?.split(' ')[0] || 'SEB',
         caption: formatStringOrArray(raw.initialPart?.drawing2Caption, 'Atelier TE/KO 2'),
+        scenarioId: raw.initialPart?.drawing2ScenarioId || extractScenarioIdFromSvg(initSvg2),
       },
     },
     playedForms: {
@@ -404,15 +407,18 @@ export async function generateFullSessionWithAI(params: {
       focus: formatStringOrArray(raw.playedForms?.focus, 'Focus TA'),
       duration: formatStringOrArray(raw.playedForms?.duration, '2X 15 min (Total 30 min)'),
       description: formatStringOrArray(raw.playedForms?.description),
+      scenarioId: raw.playedForms?.scenarioId || extractScenarioIdFromSvg(formSvg1),
       drawing1: {
         image: formSvg1,
-        coach: raw.playedForms?.drawing1Coach || params.coach?.split(' ')[0] || 'SEB',
+        coach: raw.playedForms?.drawing1Coach || params.coach?.split(' ')[0] || 'Miguel',
         caption: formatStringOrArray(raw.playedForms?.drawing1Caption, 'Forme jouée 1'),
+        scenarioId: raw.playedForms?.drawing1ScenarioId || extractScenarioIdFromSvg(formSvg1),
       },
       drawing2: {
         image: formSvg2,
-        coach: raw.playedForms?.drawing2Coach || params.assistantCoach?.split(' ')[0] || 'Miguel',
+        coach: raw.playedForms?.drawing2Coach || params.assistantCoach?.split(' ')[0] || 'SEB',
         caption: formatStringOrArray(raw.playedForms?.drawing2Caption, 'Forme jouée 2'),
+        scenarioId: raw.playedForms?.drawing2ScenarioId || extractScenarioIdFromSvg(formSvg2),
       },
     },
     finalGame: {
@@ -420,10 +426,12 @@ export async function generateFullSessionWithAI(params: {
       focus: formatStringOrArray(raw.finalGame?.focus, 'Focus TE/TA'),
       duration: formatStringOrArray(raw.finalGame?.duration, '30 min'),
       description: formatStringOrArray(raw.finalGame?.description),
+      scenarioId: raw.finalGame?.scenarioId || 'scenario-match-7v7',
       drawing1: {
         image: gameSvg,
         coach: '',
         caption: formatStringOrArray(raw.finalGame?.drawing1Caption, 'Match final 6 contre 6 (FE12 FootEco)'),
+        scenarioId: raw.finalGame?.drawing1ScenarioId || extractScenarioIdFromSvg(gameSvg) || 'scenario-match-7v7',
       },
       drawing2: {
         image: '',
@@ -507,15 +515,18 @@ export async function generateExercisePartWithAI(params: {
     focus: raw.focus || '',
     duration: raw.duration || '',
     description: partDesc,
+    scenarioId: raw.scenarioId || extractScenarioIdFromSvg(svg1),
     drawing1: {
       image: svg1,
       coach: raw.drawing1Coach || '',
       caption: raw.drawing1Caption || '',
+      scenarioId: raw.drawing1ScenarioId || extractScenarioIdFromSvg(svg1),
     },
     drawing2: {
       image: svg2,
       coach: raw.drawing2Coach || '',
       caption: raw.drawing2Caption || '',
+      scenarioId: raw.drawing2ScenarioId || extractScenarioIdFromSvg(svg2),
     },
   };
 }

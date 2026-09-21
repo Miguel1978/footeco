@@ -13,11 +13,17 @@ import {
   Layers,
   Sparkles,
   FileSpreadsheet,
+  FileJson,
 } from 'lucide-react';
 import { MatchData } from '../types';
 import { PrintableOfficialSheet } from './PrintableOfficialSheet';
-import { exportPeriodToPdf, exportAllPeriodsToPdf } from '../utils/pdfExport';
+import {
+  exportPeriodToPdf,
+  exportAllPeriodsToPdf,
+  generateOfficialSheetPdf,
+} from '../utils/pdfExport';
 import { exportMatchToExcel, exportPeriodToExcel } from '../utils/excelExport';
+import { exportMatchAsJSON } from '../utils/storage';
 import { getEventTypeConfig } from '../utils/season';
 
 interface PeriodPdfPreviewModalProps {
@@ -42,6 +48,7 @@ export const PeriodPdfPreviewModal: React.FC<PeriodPdfPreviewModalProps> = ({
   const [exportAllPdfSuccess, setExportAllPdfSuccess] = useState<boolean>(false);
   const [isExportingExcel, setIsExportingExcel] = useState<boolean>(false);
   const [exportExcelSuccess, setExportExcelSuccess] = useState<boolean>(false);
+  const [exportJsonSuccess, setExportJsonSuccess] = useState<boolean>(false);
   const previewContainerRef = useRef<HTMLDivElement>(null);
 
   // Sync initialPeriodIndex when modal opens or prop changes
@@ -89,11 +96,10 @@ export const PeriodPdfPreviewModal: React.FC<PeriodPdfPreviewModalProps> = ({
   const handleExportSinglePdf = async () => {
     setIsExportingSingle(true);
     try {
-      const success = await exportPeriodToPdf(
-        matchData,
-        selectedPeriodIdx,
-        'period-printable-sheet-preview'
-      );
+      const success = await generateOfficialSheetPdf(matchData, {
+        periodIndex: selectedPeriodIdx,
+        targetElementId: 'period-printable-sheet-preview',
+      });
       if (success) {
         setExportSingleSuccess(true);
         setTimeout(() => setExportSingleSuccess(false), 3000);
@@ -108,7 +114,9 @@ export const PeriodPdfPreviewModal: React.FC<PeriodPdfPreviewModalProps> = ({
   const handleExportAllPdf = async () => {
     setIsExportingAllPdf(true);
     try {
-      const success = await exportAllPeriodsToPdf(matchData);
+      const success = await generateOfficialSheetPdf(matchData, {
+        allPeriodsMultiPage: true,
+      });
       if (success) {
         setExportAllPdfSuccess(true);
         setTimeout(() => setExportAllPdfSuccess(false), 3000);
@@ -134,6 +142,16 @@ export const PeriodPdfPreviewModal: React.FC<PeriodPdfPreviewModalProps> = ({
       console.error('Erreur lors de l’export Excel:', err);
     } finally {
       setIsExportingExcel(false);
+    }
+  };
+
+  const handleExportJson = () => {
+    try {
+      exportMatchAsJSON(matchData);
+      setExportJsonSuccess(true);
+      setTimeout(() => setExportJsonSuccess(false), 3000);
+    } catch (err) {
+      console.error('Erreur lors de l’export JSON:', err);
     }
   };
 
@@ -353,6 +371,26 @@ export const PeriodPdfPreviewModal: React.FC<PeriodPdfPreviewModalProps> = ({
                 <span>Excel 4 Matchs (.xlsx)</span>
               </button>
             )}
+
+            {/* Export JSON backup */}
+            <button
+              type="button"
+              onClick={handleExportJson}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-950 bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 rounded-lg shadow-2xs transition-all active:scale-95 cursor-pointer"
+              title="Exporter l'ensemble de la rencontre au format JSON (sauvegarde complète & réimportation)"
+            >
+              {exportJsonSuccess ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-indigo-700" />
+                  <span>JSON exporté !</span>
+                </>
+              ) : (
+                <>
+                  <FileJson className="w-3.5 h-3.5 text-indigo-700" />
+                  <span>Sauvegarde JSON</span>
+                </>
+              )}
+            </button>
 
             {/* Export Single Period PDF */}
             {!viewAllPeriods && (
