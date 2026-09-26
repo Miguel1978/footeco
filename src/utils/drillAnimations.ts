@@ -2270,42 +2270,75 @@ export function buildScenarioFromExercise(
     );
   }
 
-  // Extract chronological steps (1. ..., 2. ..., 3. ...)
-  const stepMatches = specificText.match(/(?:(?:^|\n)\s*(?:[1-9]\.|\(?\d+\)|Étape\s*\d+\s*[:\-])\s*)([^\n]+)/gi);
-  if (stepMatches && stepMatches.length >= 2) {
-    const cleanSteps = stepMatches.map(s => s.replace(/^(?:^|\n)\s*(?:[1-9]\.|\(?\d+\)|Étape\s*\d+\s*[:\-])\s*/i, '').trim());
-    scenario.phases.forEach((ph, idx) => {
-      const stepText = cleanSteps[idx] || cleanSteps[cleanSteps.length - 1];
-      if (stepText) {
-        ph.description = stepText;
-        const firstWords = stepText.split(' ').slice(0, 4).join(' ');
-        ph.title = `Étape ${idx + 1} : ${firstWords.charAt(0).toUpperCase() + firstWords.slice(1)}`;
-      }
-    });
-  } else {
-    // Fallback: extract sentences
-    const sentences = specificText
-      .split(/[,;\n.]/)
-      .map(s => s.trim())
-      .filter(s => s.length > 10 && !s.startsWith('•') && !s.startsWith('🎯') && !s.startsWith('📐'));
+  // Extract chronological steps and movements from the workshop text
+  // 1. Try numbered steps (1. ..., 2. ..., 3. ... or Étape 1: ...)
+  const stepMatches = specificText.match(/(?:(?:^|\n)\s*(?:[1-9]\.|\(?\d+\)|Étape\s*\d+\s*[:\-]|\bPhase\s*\d+\s*[:\-])\s*)([^\n]+)/gi);
+  // 2. Try bullet points (• ..., - ..., * ...)
+  const bulletMatches = specificText.match(/(?:(?:^|\n)\s*[•\-\*]\s*)([^\n•\-\*]{10,})/gi);
+  
+  let extractedActionSteps: string[] = [];
 
-    if (sentences.length >= 2 && scenario.phases.length >= 2) {
-      scenario.phases.forEach((ph, idx) => {
-        const matchedSentence = sentences[idx] || sentences[sentences.length - 1];
-        if (matchedSentence) {
-          ph.description = matchedSentence.charAt(0).toUpperCase() + matchedSentence.slice(1) + '.';
-        }
-      });
+  if (stepMatches && stepMatches.length >= 2) {
+    extractedActionSteps = stepMatches.map(s => 
+      s.replace(/^(?:^|\n)\s*(?:[1-9]\.|\(?\d+\)|Étape\s*\d+\s*[:\-]|\bPhase\s*\d+\s*[:\-])\s*/i, '').trim()
+    );
+  } else if (bulletMatches && bulletMatches.length >= 2) {
+    extractedActionSteps = bulletMatches.map(s => 
+      s.replace(/^(?:^|\n)\s*[•\-\*]\s*/, '').trim()
+    );
+  } else {
+    // 3. Fallback: Parse clauses or meaningful sentences from the drill text
+    const sentences = specificText
+      .split(/(?:\n{2,}|\.\s+|;\s+)/)
+      .map(s => s.trim())
+      .filter(s => s.length > 12 && !s.match(/^(?:🎯|📐|⏱️|👥|Coach|Matériel|Dimensions)/i));
+    
+    if (sentences.length >= 2) {
+      extractedActionSteps = sentences;
     }
   }
 
-  // Extract coaching accents if present
-  const coachMatch = specificText.match(/[•\-\*]?\s*(?:🗣️\s*)?(?:Coaching|Consignes)\s*[:\-]\s*([^\n\r]+)/i);
-  if (coachMatch && coachMatch[1]?.trim()) {
-    const coachingTip = coachMatch[1].trim();
-    scenario.phases.forEach(ph => {
-      if (!ph.coachingAccents.includes(coachingTip)) {
-        ph.coachingAccents.unshift(coachingTip);
+  // Align scenario phases with the extracted workshop steps
+  if (extractedActionSteps.length > 0) {
+    scenario.phases.forEach((ph, idx) => {
+      const stepText = extractedActionSteps[idx] || extractedActionSteps[extractedActionSteps.length - 1];
+      if (stepText) {
+        ph.description = stepText.charAt(0).toUpperCase() + stepText.slice(1);
+        
+        // Extract meaningful short title for phase
+        const cleanWords = stepText.replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '').split(' ').slice(0, 5).join(' ');
+        if (cleanWords.length > 3) {
+          ph.title = `Étape ${idx + 1} : ${cleanWords.charAt(0).toUpperCase() + cleanWords.slice(1)}`;
+        }
+        
+        // Generate contextual subtitle action
+        const lower = stepText.toLowerCase();
+        if (lower.includes('passe') || lower.includes('remise') || lower.includes('centre')) {
+          ph.subtitle = 'Transmission & circulation du ballon';
+        } else if (lower.includes('frappe') || lower.includes('tir') || lower.includes('finition') || lower.includes('but')) {
+          ph.subtitle = 'Prise de chance & cadrage au but';
+        } else if (lower.includes('conduite') || lower.includes('slalom') || lower.includes('dribble') || lower.includes('crochet')) {
+          ph.subtitle = 'Progression vive & élimination';
+        } else if (lower.includes('appel') || lower.includes('dédouble') || lower.includes('course') || lower.includes('soutien')) {
+          ph.subtitle = 'Appel dans l\'espace libre & soutien';
+        } else if (lower.includes('défens') || lower.includes('cadrage') || lower.includes('pressing') || lower.includes('interception')) {
+          ph.subtitle = 'Pression défensive & fermeture d\'angle';
+        }
+      }
+    });
+  }
+
+  // Extract coaching accents, consignes and provocation rules from the workshop text
+  const coachingMatches = specificText.match(/[•\-\*]?\s*(?:🗣️\s*)?(?:Coaching|Consignes?|Points?\s*clés?|Règles?|Accents?)\s*[:\-]\s*([^\n\r]+)/gi);
+  if (coachingMatches && coachingMatches.length > 0) {
+    coachingMatches.forEach(cm => {
+      const cleanTip = cm.replace(/^[•\-\*]?\s*(?:🗣️\s*)?(?:Coaching|Consignes?|Points?\s*clés?|Règles?|Accents?)\s*[:\-]\s*/i, '').trim();
+      if (cleanTip && cleanTip.length > 5) {
+        scenario.phases.forEach(ph => {
+          if (!ph.coachingAccents.includes(cleanTip)) {
+            ph.coachingAccents.unshift(cleanTip);
+          }
+        });
       }
     });
   }
@@ -2313,9 +2346,9 @@ export function buildScenarioFromExercise(
   // Ensure pedagogical variables are initialized with default ASF FootEco suggestions
   if (!scenario.pedagogicalVariants.variables || scenario.pedagogicalVariants.variables.length === 0) {
     scenario.pedagogicalVariants.variables = [
-      { ...ASF_PEDAGOGICAL_VARIABLES_CATALOG[0], isActive: true }, // Règle des 3 secondes
-      { ...ASF_PEDAGOGICAL_VARIABLES_CATALOG[1], isActive: false }, // 2 touches
-      { ...ASF_PEDAGOGICAL_VARIABLES_CATALOG[3], isActive: true }, // Joker neutre
+      { ...ASF_PEDAGOGICAL_VARIABLES_CATALOG[0], isActive: lowerText.includes('3s') || lowerText.includes('seconde') }, // Règle des 3 secondes
+      { ...ASF_PEDAGOGICAL_VARIABLES_CATALOG[1], isActive: lowerText.includes('2 touches') || lowerText.includes('deux touches') }, // 2 touches max
+      { ...ASF_PEDAGOGICAL_VARIABLES_CATALOG[3], isActive: lowerText.includes('joker') }, // Joker neutre
     ];
   }
 

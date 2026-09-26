@@ -1264,6 +1264,32 @@ export const AITrainingGeneratorModal: React.FC<AITrainingGeneratorModalProps> =
                           partFocus={currentPartData.focus}
                           slotName={selectedSlotKey}
                           category={category}
+                          drawingSvg={
+                            selectedSlotKey === 'Dessin 2'
+                              ? (currentPartData.part.drawing2Svg || currentPartData.part.drawing2?.image)
+                              : (currentPartData.part.drawing1Svg || currentPartData.part.drawing1?.image)
+                          }
+                          customDrawingCaption={
+                            selectedSlotKey === 'Dessin 2'
+                              ? currentPartData.part.drawing2?.caption
+                              : currentPartData.part.drawing1?.caption
+                          }
+                          coachName={
+                            selectedSlotKey === 'Dessin 2'
+                              ? (currentPartData.part.drawing2?.coach || generatedSession.assistantCoach)
+                              : (currentPartData.part.drawing1?.coach || generatedSession.coach)
+                          }
+                          scenarioId={
+                            selectedSlotKey === 'Dessin 2'
+                              ? (currentPartData.part.drawing2ScenarioId || currentPartData.part.scenarioId)
+                              : (currentPartData.part.drawing1ScenarioId || currentPartData.part.scenarioId)
+                          }
+                          hasMultiple={currentPartData.hasMultiple}
+                          drawing1Caption={currentPartData.part.drawing1?.caption}
+                          drawing2Caption={currentPartData.part.drawing2?.caption}
+                          drawing1Coach={currentPartData.part.drawing1?.coach || generatedSession.coach}
+                          drawing2Coach={currentPartData.part.drawing2?.coach || generatedSession.assistantCoach}
+                          onSelectSlot={(slot) => setSelectedSlotKey(slot)}
                           onOpenFullscreen={() => setAnimModalData({
                             isOpen: true,
                             title: currentPartData.part.title,

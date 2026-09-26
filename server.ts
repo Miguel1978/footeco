@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, GenerateVideosOperation } from "@google/genai";
 import dotenv from "dotenv";
 import { generateTailoredSvgFromExercise, extractScenarioIdFromSvg } from "./src/utils/pitchDiagrams";
 import { generateAsfSessionProcedural } from "./src/utils/asfProceduralGenerator";
@@ -701,6 +701,112 @@ Réponds UNIQUEMENT avec un JSON strict :
       return res.json({ success: true, data: generated });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API 4: Veo 3 Video Generation for Football Drills (using veo-3.1-fast-generate-preview)
+  app.post("/api/ai/generate-video", async (req, res) => {
+    try {
+      const { prompt, aspectRatio = "16:9", workshopTitle = "", workshopDescription = "" } = req.body;
+      const ai = getAIClient();
+      if (!ai) {
+        return res.status(500).json({ error: "Clé API non initialisée. Veuillez configurer GEMINI_API_KEY." });
+      }
+
+      const validAspectRatio = aspectRatio === "9:16" ? "9:16" : "16:9";
+      const defaultPrompt = `Realistic cinematic 4K broadcast footage of youth football players (under-12 FootEco, red and blue jerseys) on a lush green soccer training pitch performing ${workshopTitle || "a tactical soccer drill"}: ${workshopDescription || "crisp passing sequence, fast movement, shots into the goal"}. Dynamic broadcast camera, coaches watching with whistles, sunny day.`;
+      const videoPrompt = prompt && prompt.trim().length > 10 ? prompt.trim() : defaultPrompt;
+
+      const operation = await ai.models.generateVideos({
+        model: "veo-3.1-fast-generate-preview",
+        prompt: videoPrompt,
+        config: {
+          numberOfVideos: 1,
+          resolution: "720p",
+          aspectRatio: validAspectRatio,
+        },
+      });
+
+      if (!operation || !operation.name) {
+        throw new Error("Opération de génération Veo 3 non initiée");
+      }
+
+      return res.json({ success: true, operationName: operation.name });
+    } catch (err: any) {
+      console.error("Error in /api/ai/generate-video:", err);
+      return res.status(500).json({ error: err.message || "Erreur lors du lancement de la génération Veo 3" });
+    }
+  });
+
+  // API 5: Veo 3 Video Status Polling
+  app.post("/api/ai/video-status", async (req, res) => {
+    try {
+      const { operationName } = req.body;
+      if (!operationName) {
+        return res.status(400).json({ error: "Nom d'opération requis" });
+      }
+
+      const ai = getAIClient();
+      if (!ai) {
+        return res.status(500).json({ error: "Clé API non disponible" });
+      }
+
+      const op = new GenerateVideosOperation();
+      op.name = operationName;
+      const updated = await ai.operations.getVideosOperation({ operation: op });
+
+      const isDone = Boolean(updated.done);
+      const errorMsg = updated.error ? (updated.error.message || String(updated.error)) : null;
+
+      return res.json({
+        done: isDone,
+        error: errorMsg,
+        progress: (updated as any).metadata?.progressPercent || undefined,
+      });
+    } catch (err: any) {
+      console.error("Error in /api/ai/video-status:", err);
+      return res.status(500).json({ error: err.message || "Erreur de consultation du statut vidéo" });
+    }
+  });
+
+  // API 6: Veo 3 Video Download & Stream
+  app.post("/api/ai/video-download", async (req, res) => {
+    try {
+      const { operationName } = req.body;
+      if (!operationName) {
+        return res.status(400).json({ error: "Nom d'opération requis" });
+      }
+
+      const ai = getAIClient();
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!ai || !apiKey) {
+        return res.status(500).json({ error: "Clé API non disponible" });
+      }
+
+      const op = new GenerateVideosOperation();
+      op.name = operationName;
+      const updated = await ai.operations.getVideosOperation({ operation: op });
+
+      const uri = updated.response?.generatedVideos?.[0]?.video?.uri;
+      if (!uri) {
+        return res.status(404).json({ error: "Vidéo non prête ou URI introuvable" });
+      }
+
+      const videoRes = await fetch(uri, {
+        headers: { "x-goog-api-key": apiKey },
+      });
+
+      if (!videoRes.ok) {
+        return res.status(videoRes.status).json({ error: `Erreur lors de la récupération de la vidéo: ${videoRes.statusText}` });
+      }
+
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Disposition", `inline; filename="veo3-footeco-${Date.now()}.mp4"`);
+      const buffer = await videoRes.arrayBuffer();
+      return res.send(Buffer.from(buffer));
+    } catch (err: any) {
+      console.error("Error in /api/ai/video-download:", err);
+      return res.status(500).json({ error: err.message || "Erreur de téléchargement vidéo" });
     }
   });
 

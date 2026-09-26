@@ -96,8 +96,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
 
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
-  if (!isOpen) return null;
-
   const updateSchedule = (newSchedule: ScheduledMatch[]) => {
     setSchedule(newSchedule);
     saveMatchSchedule(newSchedule);
@@ -355,6 +353,8 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
 
   const selectedDateMatches = matchesByDate.get(selectedDate) || [];
   const todayStr = new Date().toISOString().split('T')[0];
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs">

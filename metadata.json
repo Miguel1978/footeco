@@ -1,6 +1,6 @@
 {
   "name": "Feuille de Match Footeco FE12",
-  "description": "Gestion officielle de feuille de match et de séances d'entraînement FootEco FE12 avec favoris tactiques 7v7 (2-3-1, 3-2-1, 2-2-2), gestion des saisons, calendrier des rencontres, thèmes TE/TA/PE, schémas tactiques d'ateliers, effectif, rotations et exports PDF/Excel.",
+  "description": "Gestion officielle de feuille de match et de séances d'entraînement FootEco FE12 avec favoris tactiques 7v7, visualisations tactiques animées synchronisées avec les ateliers, génération vidéo réaliste IA Veo 3 (veo-3.1-fast-generate-preview 16:9 & 9:16), effectif, rotations et exports PDF/Excel.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

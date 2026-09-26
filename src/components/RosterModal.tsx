@@ -47,8 +47,6 @@ export const RosterModal: React.FC<RosterModalProps> = ({
   // Selected player for avatar customization modal
   const [editingAvatarPlayer, setEditingAvatarPlayer] = useState<Player | null>(null);
 
-  if (!isOpen) return null;
-
   const handleAddPlayer = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPlayerName.trim()) return;
@@ -188,6 +186,8 @@ export const RosterModal: React.FC<RosterModalProps> = ({
     setPositionFilter('all');
     setPresenceFilter('all');
   };
+
+  if (!isOpen) return null;
 
   return (
     <>
